@@ -44,9 +44,19 @@ fn bench_blake2b_4ary(c: &mut Criterion) {
     );
 }
 
+fn bench_blake2b_standard_parallel_parents(c: &mut Criterion) {
+    c.bench(
+        "throughput_benches",
+        Benchmark::new("bench_blake2b_standard_parallel_parents", |b| {
+            let input = vec![0xff; LENGTH];
+            b.iter(move || bao_experiments::hash_recurse_rayon_blake2b_parallel_parents(&input))
+        }).throughput(Throughput::Bytes(LENGTH as u32)),
+    );
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default().warm_up_time(Duration::from_secs(WARMUP_SECS));
-    targets = bench_standard, bench_blake2s, bench_blake2b_4ary
+    targets = bench_standard, bench_blake2s, bench_blake2b_4ary, bench_blake2b_standard_parallel_parents
 );
 criterion_main!(benches);

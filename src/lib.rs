@@ -353,12 +353,94 @@ pub fn hash_recurse_rayon_blake2b_4ary(
     four_ary_parent_hash_blake2b(&child0, &child1, &child2, &child3, finalization)
 }
 
+// Another approach to standard Bao. This implementation makes sure to use 4-way SIMD even in
+// hashing parent nodes, to further cut down on overhead without changing the output. Again we
+// don't even bother to handle trees that aren't a power of 4 number of chunks, because we're just
+// benchmarking the best case.
+pub fn hash_recurse_rayon_blake2b_parallel_parents_recurse(
+    input: &[u8],
+) -> [blake2b_simd::Hash; 4] {
+    // A real version of this algorithm would of course need to handle uneven inputs.
+    assert!(input.len() > 0);
+    assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
+
+    if input.len() == 4 * CHUNK_SIZE {
+        let mut state0 = new_chunk_state_blake2b();
+        let mut state1 = new_chunk_state_blake2b();
+        let mut state2 = new_chunk_state_blake2b();
+        let mut state3 = new_chunk_state_blake2b();
+        blake2b_simd::update4(
+            &mut state0,
+            &mut state1,
+            &mut state2,
+            &mut state3,
+            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
+        );
+        return blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
+    }
+
+    let (left_children, right_children) = rayon::join(
+        || hash_recurse_rayon_blake2b_parallel_parents_recurse(&input[..input.len() / 2]),
+        || hash_recurse_rayon_blake2b_parallel_parents_recurse(&input[input.len() / 2..]),
+    );
+    let mut state0 = new_parent_state_blake2b();
+    let mut state1 = new_parent_state_blake2b();
+    let mut state2 = new_parent_state_blake2b();
+    let mut state3 = new_parent_state_blake2b();
+    blake2b_simd::update4(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &left_children[0].as_bytes(),
+        &left_children[2].as_bytes(),
+        &right_children[0].as_bytes(),
+        &right_children[2].as_bytes(),
+    );
+    blake2b_simd::update4(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &left_children[1].as_bytes(),
+        &left_children[3].as_bytes(),
+        &right_children[1].as_bytes(),
+        &right_children[3].as_bytes(),
+    );
+    blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3)
+}
+
+pub fn hash_recurse_rayon_blake2b_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
+    let children = hash_recurse_rayon_blake2b_parallel_parents_recurse(input);
+    let left_hash = parent_hash_blake2b(&children[0], &children[1], NotRoot);
+    let right_hash = parent_hash_blake2b(&children[2], &children[3], NotRoot);
+    parent_hash_blake2b(&left_hash, &right_hash, Root(input.len() as u64))
+}
+
 // We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
-// least test the standard one above.
-#[test]
-fn test_standard() {
-    let input = vec![0; 1_000_000];
-    let expected = "9a6b54aa320c7ad83f7367aa7206b265a5f86f2ec306e0e108843695c8474311";
-    let hash = hash_recurse_rayon_blake2b(&input, Root(input.len() as u64));
-    assert_eq!(expected, &*hash.to_hex());
+// least test the two implementations above that produce standard output.
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_standard() {
+        let input = vec![0; 1_000_000];
+        let expected = "9a6b54aa320c7ad83f7367aa7206b265a5f86f2ec306e0e108843695c8474311";
+        let hash = hash_recurse_rayon_blake2b(&input, Root(input.len() as u64));
+        assert_eq!(expected, &*hash.to_hex());
+    }
+
+    // We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
+    // least test the standard one above.
+    #[test]
+    fn test_standard_parallel_parents() {
+        let input = vec![0; 1 << 24];
+        let expected = "99ca8f9f6a14d792bc33425268739f28c4a24f817eb92431101e20886a102c1d";
+        let hash = hash_recurse_rayon_blake2b_parallel_parents(&input);
+        assert_eq!(expected, &*hash.to_hex());
+    }
 }

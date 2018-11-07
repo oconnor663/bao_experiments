@@ -31,3 +31,9 @@ fn bench_blake2b_4ary(b: &mut Bencher) {
     let input = input(b, LENGTH);
     b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_4ary(&input, Root(LENGTH as u64)));
 }
+
+#[bench]
+fn bench_blake2b_standard_parallel_parents(b: &mut Bencher) {
+    let input = input(b, LENGTH);
+    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_parallel_parents(&input));
+}

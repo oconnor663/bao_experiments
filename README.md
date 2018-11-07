@@ -16,4 +16,6 @@ it:
 
 Run the benchmarks with `cargo +nightly bench`. This executes the same
 benchmarks with `libtest` and with
-[`criterion`](https://github.com/japaric/criterion.rs).
+[`criterion`](https://github.com/japaric/criterion.rs). Note that the
+`libtest` benchmarks vary by as much as 40% depending on whether the
+processor is already hot, because they don't do their own warmups.
