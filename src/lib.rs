@@ -508,6 +508,35 @@ pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents(input: &[u8]) -> blake2b
     )
 }
 
+// Modified Bao using a larger chunk size.
+pub fn hash_recurse_rayon_blake2b_large_chunks(
+    input: &[u8],
+    finalization: Finalization,
+) -> blake2b_simd::Hash {
+    const LARGE_CHUNK: usize = 65536;
+
+    if input.len() <= LARGE_CHUNK {
+        return hash_chunk_blake2b(input, finalization);
+    }
+    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
+    // with SIMD is more efficient than going one by one.
+    if input.len() == 4 * LARGE_CHUNK {
+        return hash_four_chunk_subtree_blake2b(
+            &input[0 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[1 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[2 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[3 * LARGE_CHUNK..][..LARGE_CHUNK],
+            finalization,
+        );
+    }
+    let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
+    let (left_hash, right_hash) = rayon::join(
+        || hash_recurse_rayon_blake2b_large_chunks(left, NotRoot),
+        || hash_recurse_rayon_blake2b_large_chunks(right, NotRoot),
+    );
+    parent_hash_blake2b(&left_hash, &right_hash, finalization)
+}
+
 // We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
 // least test the two implementations above that produce standard output.
 #[cfg(test)]

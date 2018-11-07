@@ -43,3 +43,10 @@ fn bench_blake2b_4ary_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
     b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_4ary_parallel_parents(&input));
 }
+#[bench]
+fn bench_blake2b_large_chunks(b: &mut Bencher) {
+    let input = input(b, LENGTH);
+    b.iter(|| {
+        bao_experiments::hash_recurse_rayon_blake2b_large_chunks(&input, Root(LENGTH as u64))
+    });
+}

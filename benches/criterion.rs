@@ -66,6 +66,21 @@ fn bench_blake2b_4ary_parallel_parents(c: &mut Criterion) {
     );
 }
 
+fn bench_blake2b_large_chunks(c: &mut Criterion) {
+    c.bench(
+        "throughput_benches",
+        Benchmark::new("bench_blake2b_large_chunks", |b| {
+            let input = vec![0xff; LENGTH];
+            b.iter(move || {
+                bao_experiments::hash_recurse_rayon_blake2b_large_chunks(
+                    &input,
+                    Root(LENGTH as u64),
+                )
+            })
+        }).throughput(Throughput::Bytes(LENGTH as u32)),
+    );
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default().warm_up_time(Duration::from_secs(WARMUP_SECS));
@@ -75,5 +90,6 @@ criterion_group!(
         bench_blake2b_standard_parallel_parents,
         bench_blake2b_4ary,
         bench_blake2b_4ary_parallel_parents,
+        bench_blake2b_large_chunks,
 );
 criterion_main!(benches);
