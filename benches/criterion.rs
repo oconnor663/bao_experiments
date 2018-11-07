@@ -81,6 +81,34 @@ fn bench_blake2b_large_chunks(c: &mut Criterion) {
     );
 }
 
+// NOTE: This benchmark is slower than it should be, for lack of an SSE implementation of BLAKE2s.
+fn bench_blake2hybrid(c: &mut Criterion) {
+    c.bench(
+        "throughput_benches",
+        Benchmark::new("bench_blake2hybrid", |b| {
+            let input = vec![0xff; LENGTH];
+            b.iter(move || {
+                bao_experiments::hash_recurse_rayon_blake2hybrid(&input, Root(LENGTH as u64))
+            })
+        }).throughput(Throughput::Bytes(LENGTH as u32)),
+    );
+}
+
+fn bench_blake2hybrid_parallel_parents(c: &mut Criterion) {
+    c.bench(
+        "throughput_benches",
+        Benchmark::new("bench_blake2hybrid_parallel_parents", |b| {
+            let input = vec![0xff; LENGTH];
+            b.iter(move || {
+                bao_experiments::hash_recurse_rayon_blake2hybrid_parallel_parents(
+                    &input,
+                    Root(LENGTH as u64),
+                )
+            })
+        }).throughput(Throughput::Bytes(LENGTH as u32)),
+    );
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default().warm_up_time(Duration::from_secs(WARMUP_SECS));
@@ -91,5 +119,7 @@ criterion_group!(
         bench_blake2b_4ary,
         bench_blake2b_4ary_parallel_parents,
         bench_blake2b_large_chunks,
+        bench_blake2hybrid,
+        bench_blake2hybrid_parallel_parents,
 );
 criterion_main!(benches);

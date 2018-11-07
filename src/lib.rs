@@ -537,6 +537,177 @@ pub fn hash_recurse_rayon_blake2b_large_chunks(
     parent_hash_blake2b(&left_hash, &right_hash, finalization)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Either {
+    B(blake2b_simd::Hash),
+    S(blake2s_simd::Hash),
+}
+use Either::*;
+
+impl Either {
+    fn as_bytes(&self) -> &[u8] {
+        match *self {
+            B(ref hash) => hash.as_bytes(),
+            S(ref hash) => hash.as_bytes(),
+        }
+    }
+}
+
+fn hash_4_chunks_either(chunk0: &[u8], chunk1: &[u8], chunk2: &[u8], chunk3: &[u8]) -> [Either; 4] {
+    let mut state0 = new_chunk_state_blake2b();
+    let mut state1 = new_chunk_state_blake2b();
+    let mut state2 = new_chunk_state_blake2b();
+    let mut state3 = new_chunk_state_blake2b();
+    blake2b_simd::update4(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        chunk0,
+        chunk1,
+        chunk2,
+        chunk3,
+    );
+    match blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3) {
+        [h0, h1, h2, h3] => [B(h0), B(h1), B(h2), B(h3)],
+    }
+}
+
+fn parent_hash_either(left: &Either, right: &Either, finalization: Finalization) -> Either {
+    let mut parent_state = new_parent_state_blake2s();
+    parent_state.update(left.as_bytes());
+    parent_state.update(right.as_bytes());
+    S(finalize_hash_blake2s(&mut parent_state, finalization))
+}
+
+// NOTE: This implementation should be able to take advantage of SSE in the BLAKE2s implementation,
+// but that's not currently available.
+pub fn hash_recurse_rayon_blake2hybrid(input: &[u8], finalization: Finalization) -> Either {
+    if input.len() <= CHUNK_SIZE {
+        return B(hash_chunk_blake2b(input, finalization));
+    }
+    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
+    // with SIMD is more efficient than going one by one.
+    if input.len() == 4 * CHUNK_SIZE {
+        let children = hash_4_chunks_either(
+            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
+        );
+        let double0 = parent_hash_either(&children[0], &children[1], NotRoot);
+        let double1 = parent_hash_either(&children[2], &children[3], NotRoot);
+        return parent_hash_either(&double0, &double1, finalization);
+    }
+    let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
+    let (left_hash, right_hash) = rayon::join(
+        || hash_recurse_rayon_blake2hybrid(left, NotRoot),
+        || hash_recurse_rayon_blake2hybrid(right, NotRoot),
+    );
+    parent_hash_either(&left_hash, &right_hash, finalization)
+}
+
+pub fn hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(input: &[u8]) -> [Either; 8] {
+    // A real version of this algorithm would of course need to handle uneven inputs.
+    assert!(input.len() > 0);
+    assert_eq!(0, input.len() % (8 * CHUNK_SIZE));
+
+    if input.len() == 8 * CHUNK_SIZE {
+        let children_left = hash_4_chunks_either(
+            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
+        );
+        let children_right = hash_4_chunks_either(
+            &input[4 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[5 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[6 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[7 * CHUNK_SIZE..][..CHUNK_SIZE],
+        );
+        match (children_left, children_right) {
+            ([h0, h1, h2, h3], [h4, h5, h6, h7]) => return [h0, h1, h2, h3, h4, h5, h6, h7],
+        }
+    }
+
+    let (children0, children1) = rayon::join(
+        || hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(&input[..input.len() / 2]),
+        || hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(&input[input.len() / 2..]),
+    );
+    let mut state0 = new_parent_state_blake2s();
+    let mut state1 = new_parent_state_blake2s();
+    let mut state2 = new_parent_state_blake2s();
+    let mut state3 = new_parent_state_blake2s();
+    let mut state4 = new_parent_state_blake2s();
+    let mut state5 = new_parent_state_blake2s();
+    let mut state6 = new_parent_state_blake2s();
+    let mut state7 = new_parent_state_blake2s();
+    blake2s_simd::update8(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &mut state4,
+        &mut state5,
+        &mut state6,
+        &mut state7,
+        children0[0].as_bytes(),
+        children0[2].as_bytes(),
+        children0[4].as_bytes(),
+        children0[6].as_bytes(),
+        children1[0].as_bytes(),
+        children1[2].as_bytes(),
+        children1[4].as_bytes(),
+        children1[6].as_bytes(),
+    );
+    blake2s_simd::update8(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &mut state4,
+        &mut state5,
+        &mut state6,
+        &mut state7,
+        children0[1].as_bytes(),
+        children0[3].as_bytes(),
+        children0[5].as_bytes(),
+        children0[7].as_bytes(),
+        children1[1].as_bytes(),
+        children1[3].as_bytes(),
+        children1[5].as_bytes(),
+        children1[7].as_bytes(),
+    );
+    match blake2s_simd::finalize8(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &mut state4,
+        &mut state5,
+        &mut state6,
+        &mut state7,
+    ) {
+        [h0, h1, h2, h3, h4, h5, h6, h7] => {
+            [S(h0), S(h1), S(h2), S(h3), S(h4), S(h5), S(h6), S(h7)]
+        }
+    }
+}
+
+pub fn hash_recurse_rayon_blake2hybrid_parallel_parents(input: &[u8]) -> Either {
+    let children = hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(input);
+
+    let double0 = parent_hash_either(&children[0], &children[1], NotRoot);
+    let double1 = parent_hash_either(&children[2], &children[3], NotRoot);
+    let double2 = parent_hash_either(&children[4], &children[5], NotRoot);
+    let double3 = parent_hash_either(&children[6], &children[7], NotRoot);
+
+    let quad0 = parent_hash_either(&double0, &double1, NotRoot);
+    let quad1 = parent_hash_either(&double2, &double3, NotRoot);
+
+    parent_hash_either(&quad0, &quad1, Root(input.len() as u64))
+}
+
 // We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
 // least test the two implementations above that produce standard output.
 #[cfg(test)]
@@ -566,6 +737,16 @@ mod test {
         let input = vec![0; 1 << 24];
         let hash1 = hash_recurse_rayon_blake2b_4ary(&input, Root(input.len() as u64));
         let hash2 = hash_recurse_rayon_blake2b_4ary_parallel_parents(&input);
+        assert_eq!(hash1, hash2);
+    }
+
+    // Likewise, we can at least make sure that the two hybrid implementations produce the same
+    // output as each other.
+    #[test]
+    fn test_hybrid_implementations() {
+        let input = vec![0; 32 * CHUNK_SIZE];
+        let hash1 = hash_recurse_rayon_blake2hybrid(&input, Root(input.len() as u64));
+        let hash2 = hash_recurse_rayon_blake2hybrid_parallel_parents(&input);
         assert_eq!(hash1, hash2);
     }
 }
