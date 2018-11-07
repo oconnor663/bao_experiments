@@ -1,12 +1,11 @@
-This repo currently contains two experiments, both inspired by
-https://twitter.com/zooko/status/1058628340918050816
+This repo currently contains several experiments, suggested by
+https://twitter.com/zooko/status/1058628340918050816. They're all aimed
+at reducing the overhead of hashing parent nodes:
 
-1. What if Bao used BLAKE2s (`update8`) instead of BLAKE2b (`update4`)?
-   This could reduce parent node overhead, because the BLAKE2s block
-   size is exactly two parent nodes.
-2. What if Bao used a 4-way tree instead of a binary tree? This could
-   reduce parent node overhead, because the BLAKE2b block size is
-   exactly four parent nodes.
+- Use BLAKE2s instead of BLAKE2b.
+- Use a hybrid of BLAKE2b for chunks and BLAKE2s for parents.
+- Use a 4-ary tree.
+- Use a larger chunk size.
 
 For now, building this repo requires you to clone these two adjacent to
 it:

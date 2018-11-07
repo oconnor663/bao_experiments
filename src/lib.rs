@@ -219,7 +219,7 @@ fn hash_eight_chunk_subtree_blake2s(
 
 // This is the current standard Bao function. Note that this repo only contains large benchmarks,
 // so there's no non-rayon version of this for short inputs.
-pub fn hash_recurse_rayon_blake2b(input: &[u8], finalization: Finalization) -> blake2b_simd::Hash {
+fn bao_standard_recurse(input: &[u8], finalization: Finalization) -> blake2b_simd::Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk_blake2b(input, finalization);
     }
@@ -236,14 +236,18 @@ pub fn hash_recurse_rayon_blake2b(input: &[u8], finalization: Finalization) -> b
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
-        || hash_recurse_rayon_blake2b(left, NotRoot),
-        || hash_recurse_rayon_blake2b(right, NotRoot),
+        || bao_standard_recurse(left, NotRoot),
+        || bao_standard_recurse(right, NotRoot),
     );
     parent_hash_blake2b(&left_hash, &right_hash, finalization)
 }
 
+pub fn bao_standard(input: &[u8]) -> blake2b_simd::Hash {
+    bao_standard_recurse(input, Root(input.len() as u64))
+}
+
 // A variant of standard Bao using BLAKE2s.
-pub fn hash_recurse_rayon_blake2s(input: &[u8], finalization: Finalization) -> blake2s_simd::Hash {
+pub fn bao_blake2s_recurse(input: &[u8], finalization: Finalization) -> blake2s_simd::Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk_blake2s(input, finalization);
     }
@@ -264,10 +268,14 @@ pub fn hash_recurse_rayon_blake2s(input: &[u8], finalization: Finalization) -> b
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
-        || hash_recurse_rayon_blake2s(left, NotRoot),
-        || hash_recurse_rayon_blake2s(right, NotRoot),
+        || bao_blake2s_recurse(left, NotRoot),
+        || bao_blake2s_recurse(right, NotRoot),
     );
     parent_hash_blake2s(&left_hash, &right_hash, finalization)
+}
+
+pub fn bao_blake2s(input: &[u8]) -> blake2s_simd::Hash {
+    bao_blake2s_recurse(input, Root(input.len() as u64))
 }
 
 fn four_ary_parent_hash_blake2b(
@@ -317,13 +325,7 @@ fn hash_four_chunk_4ary_subtree_blake2b(
     )
 }
 
-// A variant of standard Bao sticking with BLAKE2b but using a 4-ary tree. Here we don't even
-// bother to handle trees that aren't a power of 4 number of chunks, but of course we'd need to
-// define what to do there if we went with a 4-ary tree.
-pub fn hash_recurse_rayon_blake2b_4ary(
-    input: &[u8],
-    finalization: Finalization,
-) -> blake2b_simd::Hash {
+fn bao_4ary_recurse(input: &[u8], finalization: Finalization) -> blake2b_simd::Hash {
     assert!(input.len() > 0);
     assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
     if input.len() == 4 * CHUNK_SIZE {
@@ -339,27 +341,32 @@ pub fn hash_recurse_rayon_blake2b_4ary(
     let ((child0, child1), (child2, child3)) = rayon::join(
         || {
             rayon::join(
-                || hash_recurse_rayon_blake2b_4ary(&input[0 * quarter..][..quarter], NotRoot),
-                || hash_recurse_rayon_blake2b_4ary(&input[1 * quarter..][..quarter], NotRoot),
+                || bao_4ary_recurse(&input[0 * quarter..][..quarter], NotRoot),
+                || bao_4ary_recurse(&input[1 * quarter..][..quarter], NotRoot),
             )
         },
         || {
             rayon::join(
-                || hash_recurse_rayon_blake2b_4ary(&input[2 * quarter..][..quarter], NotRoot),
-                || hash_recurse_rayon_blake2b_4ary(&input[3 * quarter..][..quarter], NotRoot),
+                || bao_4ary_recurse(&input[2 * quarter..][..quarter], NotRoot),
+                || bao_4ary_recurse(&input[3 * quarter..][..quarter], NotRoot),
             )
         },
     );
     four_ary_parent_hash_blake2b(&child0, &child1, &child2, &child3, finalization)
 }
 
+// A variant of standard Bao sticking with BLAKE2b but using a 4-ary tree. Here we don't even
+// bother to handle trees that aren't a power of 4 number of chunks, but of course we'd need to
+// define what to do there if we went with a 4-ary tree.
+pub fn bao_4ary(input: &[u8]) -> blake2b_simd::Hash {
+    bao_4ary_recurse(input, Root(input.len() as u64))
+}
+
 // Another approach to standard Bao. This implementation makes sure to use 4-way SIMD even in
 // hashing parent nodes, to further cut down on overhead without changing the output. Again we
 // don't even bother to handle trees that aren't a power of 4 number of chunks, because we're just
 // benchmarking the best case.
-pub fn hash_recurse_rayon_blake2b_parallel_parents_recurse(
-    input: &[u8],
-) -> [blake2b_simd::Hash; 4] {
+fn bao_standard_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4] {
     // A real version of this algorithm would of course need to handle uneven inputs.
     assert!(input.len() > 0);
     assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
@@ -383,8 +390,8 @@ pub fn hash_recurse_rayon_blake2b_parallel_parents_recurse(
     }
 
     let (left_children, right_children) = rayon::join(
-        || hash_recurse_rayon_blake2b_parallel_parents_recurse(&input[..input.len() / 2]),
-        || hash_recurse_rayon_blake2b_parallel_parents_recurse(&input[input.len() / 2..]),
+        || bao_standard_parallel_parents_recurse(&input[..input.len() / 2]),
+        || bao_standard_parallel_parents_recurse(&input[input.len() / 2..]),
     );
     let mut state0 = new_parent_state_blake2b();
     let mut state1 = new_parent_state_blake2b();
@@ -413,17 +420,15 @@ pub fn hash_recurse_rayon_blake2b_parallel_parents_recurse(
     blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3)
 }
 
-pub fn hash_recurse_rayon_blake2b_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
-    let children = hash_recurse_rayon_blake2b_parallel_parents_recurse(input);
+pub fn bao_standard_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
+    let children = bao_standard_parallel_parents_recurse(input);
     let left_hash = parent_hash_blake2b(&children[0], &children[1], NotRoot);
     let right_hash = parent_hash_blake2b(&children[2], &children[3], NotRoot);
     parent_hash_blake2b(&left_hash, &right_hash, Root(input.len() as u64))
 }
 
 // A variant that takes advantage of *both* 4-way parent hashing and a 4-ary tree.
-pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
-    input: &[u8],
-) -> [blake2b_simd::Hash; 4] {
+pub fn bao_4ary_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4] {
     // A real version of this algorithm would of course need to handle uneven inputs.
     assert!(input.len() > 0);
     assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
@@ -450,30 +455,14 @@ pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
     let ((children0, children1), (children2, children3)) = rayon::join(
         || {
             rayon::join(
-                || {
-                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
-                        &input[0 * quarter..][..quarter],
-                    )
-                },
-                || {
-                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
-                        &input[1 * quarter..][..quarter],
-                    )
-                },
+                || bao_4ary_parallel_parents_recurse(&input[0 * quarter..][..quarter]),
+                || bao_4ary_parallel_parents_recurse(&input[1 * quarter..][..quarter]),
             )
         },
         || {
             rayon::join(
-                || {
-                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
-                        &input[2 * quarter..][..quarter],
-                    )
-                },
-                || {
-                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
-                        &input[3 * quarter..][..quarter],
-                    )
-                },
+                || bao_4ary_parallel_parents_recurse(&input[2 * quarter..][..quarter]),
+                || bao_4ary_parallel_parents_recurse(&input[3 * quarter..][..quarter]),
             )
         },
     );
@@ -497,8 +486,8 @@ pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
     blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3)
 }
 
-pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
-    let children = hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(input);
+pub fn bao_4ary_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
+    let children = bao_4ary_parallel_parents_recurse(input);
     four_ary_parent_hash_blake2b(
         &children[0],
         &children[1],
@@ -509,7 +498,7 @@ pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents(input: &[u8]) -> blake2b
 }
 
 // Modified Bao using a larger chunk size.
-pub fn hash_recurse_rayon_blake2b_large_chunks(
+fn bao_blake2b_large_chunks_recurse(
     input: &[u8],
     finalization: Finalization,
 ) -> blake2b_simd::Hash {
@@ -531,10 +520,14 @@ pub fn hash_recurse_rayon_blake2b_large_chunks(
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
-        || hash_recurse_rayon_blake2b_large_chunks(left, NotRoot),
-        || hash_recurse_rayon_blake2b_large_chunks(right, NotRoot),
+        || bao_blake2b_large_chunks_recurse(left, NotRoot),
+        || bao_blake2b_large_chunks_recurse(right, NotRoot),
     );
     parent_hash_blake2b(&left_hash, &right_hash, finalization)
+}
+
+pub fn bao_blake2b_large_chunks(input: &[u8]) -> blake2b_simd::Hash {
+    bao_blake2b_large_chunks_recurse(input, Root(input.len() as u64))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -582,7 +575,7 @@ fn parent_hash_either(left: &Either, right: &Either, finalization: Finalization)
 
 // NOTE: This implementation should be able to take advantage of SSE in the BLAKE2s implementation,
 // but that's not currently available.
-pub fn hash_recurse_rayon_blake2hybrid(input: &[u8], finalization: Finalization) -> Either {
+fn bao_blake2hybrid_recurse(input: &[u8], finalization: Finalization) -> Either {
     if input.len() <= CHUNK_SIZE {
         return B(hash_chunk_blake2b(input, finalization));
     }
@@ -601,13 +594,17 @@ pub fn hash_recurse_rayon_blake2hybrid(input: &[u8], finalization: Finalization)
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
     let (left_hash, right_hash) = rayon::join(
-        || hash_recurse_rayon_blake2hybrid(left, NotRoot),
-        || hash_recurse_rayon_blake2hybrid(right, NotRoot),
+        || bao_blake2hybrid_recurse(left, NotRoot),
+        || bao_blake2hybrid_recurse(right, NotRoot),
     );
     parent_hash_either(&left_hash, &right_hash, finalization)
 }
 
-pub fn hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(input: &[u8]) -> [Either; 8] {
+pub fn bao_blake2hybrid(input: &[u8]) -> Either {
+    bao_blake2hybrid_recurse(input, Root(input.len() as u64))
+}
+
+pub fn bao_blake2hybrid_parallel_parents_recurse(input: &[u8]) -> [Either; 8] {
     // A real version of this algorithm would of course need to handle uneven inputs.
     assert!(input.len() > 0);
     assert_eq!(0, input.len() % (8 * CHUNK_SIZE));
@@ -631,8 +628,8 @@ pub fn hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(input: &[u8]) ->
     }
 
     let (children0, children1) = rayon::join(
-        || hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(&input[..input.len() / 2]),
-        || hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(&input[input.len() / 2..]),
+        || bao_blake2hybrid_parallel_parents_recurse(&input[..input.len() / 2]),
+        || bao_blake2hybrid_parallel_parents_recurse(&input[input.len() / 2..]),
     );
     let mut state0 = new_parent_state_blake2s();
     let mut state1 = new_parent_state_blake2s();
@@ -694,8 +691,8 @@ pub fn hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(input: &[u8]) ->
     }
 }
 
-pub fn hash_recurse_rayon_blake2hybrid_parallel_parents(input: &[u8]) -> Either {
-    let children = hash_recurse_rayon_blake2hybrid_parallel_parents_recurse(input);
+pub fn bao_blake2hybrid_parallel_parents(input: &[u8]) -> Either {
+    let children = bao_blake2hybrid_parallel_parents_recurse(input);
 
     let double0 = parent_hash_either(&children[0], &children[1], NotRoot);
     let double1 = parent_hash_either(&children[2], &children[3], NotRoot);
@@ -718,7 +715,7 @@ mod test {
     fn test_standard() {
         let input = vec![0; 1_000_000];
         let expected = "9a6b54aa320c7ad83f7367aa7206b265a5f86f2ec306e0e108843695c8474311";
-        let hash = hash_recurse_rayon_blake2b(&input, Root(input.len() as u64));
+        let hash = bao_standard(&input);
         assert_eq!(expected, &*hash.to_hex());
     }
 
@@ -726,7 +723,7 @@ mod test {
     fn test_standard_parallel_parents() {
         let input = vec![0; 1 << 24];
         let expected = "99ca8f9f6a14d792bc33425268739f28c4a24f817eb92431101e20886a102c1d";
-        let hash = hash_recurse_rayon_blake2b_parallel_parents(&input);
+        let hash = bao_standard_parallel_parents(&input);
         assert_eq!(expected, &*hash.to_hex());
     }
 
@@ -735,8 +732,8 @@ mod test {
     #[test]
     fn test_4ary_implementations() {
         let input = vec![0; 1 << 24];
-        let hash1 = hash_recurse_rayon_blake2b_4ary(&input, Root(input.len() as u64));
-        let hash2 = hash_recurse_rayon_blake2b_4ary_parallel_parents(&input);
+        let hash1 = bao_4ary(&input);
+        let hash2 = bao_4ary_parallel_parents(&input);
         assert_eq!(hash1, hash2);
     }
 
@@ -745,8 +742,8 @@ mod test {
     #[test]
     fn test_hybrid_implementations() {
         let input = vec![0; 32 * CHUNK_SIZE];
-        let hash1 = hash_recurse_rayon_blake2hybrid(&input, Root(input.len() as u64));
-        let hash2 = hash_recurse_rayon_blake2hybrid_parallel_parents(&input);
+        let hash1 = bao_blake2hybrid(&input);
+        let hash2 = bao_blake2hybrid_parallel_parents(&input);
         assert_eq!(hash1, hash2);
     }
 }

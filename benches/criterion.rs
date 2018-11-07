@@ -1,7 +1,6 @@
 extern crate bao_experiments;
 extern crate criterion;
 
-use bao_experiments::Finalization::*;
 use criterion::*;
 use std::time::Duration;
 
@@ -17,7 +16,7 @@ fn bench_blake2s(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2s", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || bao_experiments::hash_recurse_rayon_blake2s(&input, Root(LENGTH as u64)))
+            b.iter(move || bao_experiments::bao_blake2s(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -27,7 +26,7 @@ fn bench_blake2b_standard(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2b_standard", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || bao_experiments::hash_recurse_rayon_blake2b(&input, Root(LENGTH as u64)))
+            b.iter(move || bao_experiments::bao_standard(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -37,7 +36,7 @@ fn bench_blake2b_standard_parallel_parents(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2b_standard_parallel_parents", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || bao_experiments::hash_recurse_rayon_blake2b_parallel_parents(&input))
+            b.iter(move || bao_experiments::bao_standard_parallel_parents(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -47,9 +46,7 @@ fn bench_blake2b_4ary(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2b_4ary", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || {
-                bao_experiments::hash_recurse_rayon_blake2b_4ary(&input, Root(LENGTH as u64))
-            })
+            b.iter(move || bao_experiments::bao_4ary(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -59,9 +56,7 @@ fn bench_blake2b_4ary_parallel_parents(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2b_4ary_parallel_parents", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || {
-                bao_experiments::hash_recurse_rayon_blake2b_4ary_parallel_parents(&input)
-            })
+            b.iter(move || bao_experiments::bao_4ary_parallel_parents(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -71,12 +66,7 @@ fn bench_blake2b_large_chunks(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2b_large_chunks", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || {
-                bao_experiments::hash_recurse_rayon_blake2b_large_chunks(
-                    &input,
-                    Root(LENGTH as u64),
-                )
-            })
+            b.iter(move || bao_experiments::bao_blake2b_large_chunks(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -87,9 +77,7 @@ fn bench_blake2hybrid(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2hybrid", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || {
-                bao_experiments::hash_recurse_rayon_blake2hybrid(&input, Root(LENGTH as u64))
-            })
+            b.iter(move || bao_experiments::bao_blake2hybrid(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -99,12 +87,7 @@ fn bench_blake2hybrid_parallel_parents(c: &mut Criterion) {
         "throughput_benches",
         Benchmark::new("bench_blake2hybrid_parallel_parents", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || {
-                bao_experiments::hash_recurse_rayon_blake2hybrid_parallel_parents(
-                    &input,
-                    Root(LENGTH as u64),
-                )
-            })
+            b.iter(move || bao_experiments::bao_blake2hybrid_parallel_parents(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }

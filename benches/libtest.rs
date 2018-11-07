@@ -3,7 +3,6 @@
 extern crate bao_experiments;
 extern crate test;
 
-use bao_experiments::Finalization::*;
 use test::Bencher;
 
 // The 4ary implementation is only defined for inputs that are a power of 4 times the chunk size.
@@ -17,55 +16,48 @@ fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
 #[bench]
 fn bench_blake2s(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2s(&input, Root(LENGTH as u64)));
+    b.iter(|| bao_experiments::bao_blake2s(&input));
 }
 
 #[bench]
 fn bench_blake2b_standard(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b(&input, Root(LENGTH as u64)));
+    b.iter(|| bao_experiments::bao_standard(&input));
 }
 
 #[bench]
 fn bench_blake2b_standard_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_parallel_parents(&input));
+    b.iter(|| bao_experiments::bao_standard_parallel_parents(&input));
 }
 
 #[bench]
 fn bench_blake2b_4ary(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_4ary(&input, Root(LENGTH as u64)));
+    b.iter(|| bao_experiments::bao_4ary(&input));
 }
 
 #[bench]
 fn bench_blake2b_4ary_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_4ary_parallel_parents(&input));
+    b.iter(|| bao_experiments::bao_4ary_parallel_parents(&input));
 }
 
 #[bench]
 fn bench_blake2b_large_chunks(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| {
-        bao_experiments::hash_recurse_rayon_blake2b_large_chunks(&input, Root(LENGTH as u64))
-    });
+    b.iter(|| bao_experiments::bao_blake2b_large_chunks(&input));
 }
 
 // NOTE: This benchmark is slower than it should be, for lack of an SSE implementation of BLAKE2s.
 #[bench]
 fn bench_blake2hybrid(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2hybrid(&input, Root(LENGTH as u64)));
+    b.iter(|| bao_experiments::bao_blake2hybrid(&input));
 }
 
 #[bench]
 fn bench_blake2hybrid_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| {
-        bao_experiments::hash_recurse_rayon_blake2hybrid_parallel_parents(
-            &input,
-            Root(LENGTH as u64),
-        )
-    });
+    b.iter(|| bao_experiments::bao_blake2hybrid_parallel_parents(&input));
 }
