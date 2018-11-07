@@ -15,15 +15,21 @@ fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
 }
 
 #[bench]
-fn bench_standard(b: &mut Bencher) {
+fn bench_blake2s(b: &mut Bencher) {
+    let input = input(b, LENGTH);
+    b.iter(|| bao_experiments::hash_recurse_rayon_blake2s(&input, Root(LENGTH as u64)));
+}
+
+#[bench]
+fn bench_blake2b_standard(b: &mut Bencher) {
     let input = input(b, LENGTH);
     b.iter(|| bao_experiments::hash_recurse_rayon_blake2b(&input, Root(LENGTH as u64)));
 }
 
 #[bench]
-fn bench_blake2s(b: &mut Bencher) {
+fn bench_blake2b_standard_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2s(&input, Root(LENGTH as u64)));
+    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_parallel_parents(&input));
 }
 
 #[bench]
@@ -33,7 +39,7 @@ fn bench_blake2b_4ary(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_blake2b_standard_parallel_parents(b: &mut Bencher) {
+fn bench_blake2b_4ary_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_parallel_parents(&input));
+    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_4ary_parallel_parents(&input));
 }

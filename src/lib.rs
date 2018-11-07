@@ -420,6 +420,94 @@ pub fn hash_recurse_rayon_blake2b_parallel_parents(input: &[u8]) -> blake2b_simd
     parent_hash_blake2b(&left_hash, &right_hash, Root(input.len() as u64))
 }
 
+// A variant that takes advantage of *both* 4-way parent hashing and a 4-ary tree.
+pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
+    input: &[u8],
+) -> [blake2b_simd::Hash; 4] {
+    // A real version of this algorithm would of course need to handle uneven inputs.
+    assert!(input.len() > 0);
+    assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
+
+    if input.len() == 4 * CHUNK_SIZE {
+        let mut state0 = new_chunk_state_blake2b();
+        let mut state1 = new_chunk_state_blake2b();
+        let mut state2 = new_chunk_state_blake2b();
+        let mut state3 = new_chunk_state_blake2b();
+        blake2b_simd::update4(
+            &mut state0,
+            &mut state1,
+            &mut state2,
+            &mut state3,
+            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
+        );
+        return blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
+    }
+
+    let quarter = input.len() / 4;
+    let ((children0, children1), (children2, children3)) = rayon::join(
+        || {
+            rayon::join(
+                || {
+                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
+                        &input[0 * quarter..][..quarter],
+                    )
+                },
+                || {
+                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
+                        &input[1 * quarter..][..quarter],
+                    )
+                },
+            )
+        },
+        || {
+            rayon::join(
+                || {
+                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
+                        &input[2 * quarter..][..quarter],
+                    )
+                },
+                || {
+                    hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(
+                        &input[3 * quarter..][..quarter],
+                    )
+                },
+            )
+        },
+    );
+
+    let mut state0 = new_parent_state_blake2b();
+    let mut state1 = new_parent_state_blake2b();
+    let mut state2 = new_parent_state_blake2b();
+    let mut state3 = new_parent_state_blake2b();
+    for i in 0..4 {
+        blake2b_simd::update4(
+            &mut state0,
+            &mut state1,
+            &mut state2,
+            &mut state3,
+            &children0[i].as_bytes(),
+            &children1[i].as_bytes(),
+            &children2[i].as_bytes(),
+            &children3[i].as_bytes(),
+        );
+    }
+    blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3)
+}
+
+pub fn hash_recurse_rayon_blake2b_4ary_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
+    let children = hash_recurse_rayon_blake2b_4ary_parallel_parents_recurse(input);
+    four_ary_parent_hash_blake2b(
+        &children[0],
+        &children[1],
+        &children[2],
+        &children[3],
+        Root(input.len() as u64),
+    )
+}
+
 // We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
 // least test the two implementations above that produce standard output.
 #[cfg(test)]
@@ -434,13 +522,21 @@ mod test {
         assert_eq!(expected, &*hash.to_hex());
     }
 
-    // We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
-    // least test the standard one above.
     #[test]
     fn test_standard_parallel_parents() {
         let input = vec![0; 1 << 24];
         let expected = "99ca8f9f6a14d792bc33425268739f28c4a24f817eb92431101e20886a102c1d";
         let hash = hash_recurse_rayon_blake2b_parallel_parents(&input);
         assert_eq!(expected, &*hash.to_hex());
+    }
+
+    // Likewise, we can at least make sure that the two 4-ary implementations produce the same
+    // output as each other.
+    #[test]
+    fn test_4ary_implementations() {
+        let input = vec![0; 1 << 24];
+        let hash1 = hash_recurse_rayon_blake2b_4ary(&input, Root(input.len() as u64));
+        let hash2 = hash_recurse_rayon_blake2b_4ary_parallel_parents(&input);
+        assert_eq!(hash1, hash2);
     }
 }
