@@ -6,7 +6,8 @@ extern crate test;
 use bao_experiments::Finalization::*;
 use test::Bencher;
 
-const LENGTH: usize = 10_000_000;
+// The 4ary implementation is only defined for inputs that are a power of 4 times the chunk size.
+const LENGTH: usize = 1 << 24; // about 17 MB
 
 fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
     b.bytes = size as u64;
@@ -23,4 +24,10 @@ fn bench_standard(b: &mut Bencher) {
 fn bench_blake2s(b: &mut Bencher) {
     let input = input(b, LENGTH);
     b.iter(|| bao_experiments::hash_recurse_rayon_blake2s(&input, Root(LENGTH as u64)));
+}
+
+#[bench]
+fn bench_blake2b_4ary(b: &mut Bencher) {
+    let input = input(b, LENGTH);
+    b.iter(|| bao_experiments::hash_recurse_rayon_blake2b_4ary(&input, Root(LENGTH as u64)));
 }

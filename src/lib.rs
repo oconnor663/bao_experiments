@@ -217,8 +217,8 @@ fn hash_eight_chunk_subtree_blake2s(
     parent_hash_blake2s(&quad0, &quad1, finalization)
 }
 
-// This repo only contains large benchmarks, so there's no non-rayon version of this for short
-// inputs.
+// This is the current standard Bao function. Note that this repo only contains large benchmarks,
+// so there's no non-rayon version of this for short inputs.
 pub fn hash_recurse_rayon_blake2b(input: &[u8], finalization: Finalization) -> blake2b_simd::Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk_blake2b(input, finalization);
@@ -242,8 +242,7 @@ pub fn hash_recurse_rayon_blake2b(input: &[u8], finalization: Finalization) -> b
     parent_hash_blake2b(&left_hash, &right_hash, finalization)
 }
 
-// This repo only contains large benchmarks, so there's no non-rayon version of this for short
-// inputs.
+// A variant of standard Bao using BLAKE2s.
 pub fn hash_recurse_rayon_blake2s(input: &[u8], finalization: Finalization) -> blake2s_simd::Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk_blake2s(input, finalization);
@@ -269,6 +268,89 @@ pub fn hash_recurse_rayon_blake2s(input: &[u8], finalization: Finalization) -> b
         || hash_recurse_rayon_blake2s(right, NotRoot),
     );
     parent_hash_blake2s(&left_hash, &right_hash, finalization)
+}
+
+fn four_ary_parent_hash_blake2b(
+    child0: &blake2b_simd::Hash,
+    child1: &blake2b_simd::Hash,
+    child2: &blake2b_simd::Hash,
+    child3: &blake2b_simd::Hash,
+    finalization: Finalization,
+) -> blake2b_simd::Hash {
+    let mut parent = new_parent_state_blake2b();
+    parent.update(child0.as_bytes());
+    parent.update(child1.as_bytes());
+    parent.update(child2.as_bytes());
+    parent.update(child3.as_bytes());
+    finalize_hash_blake2b(&mut parent, finalization)
+}
+
+fn hash_four_chunk_4ary_subtree_blake2b(
+    chunk0: &[u8],
+    chunk1: &[u8],
+    chunk2: &[u8],
+    chunk3: &[u8],
+    finalization: Finalization,
+) -> blake2b_simd::Hash {
+    // This relies on the fact that finalize_hash does nothing for non-root nodes.
+    let mut state0 = new_chunk_state_blake2b();
+    let mut state1 = new_chunk_state_blake2b();
+    let mut state2 = new_chunk_state_blake2b();
+    let mut state3 = new_chunk_state_blake2b();
+    blake2b_simd::update4(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        chunk0,
+        chunk1,
+        chunk2,
+        chunk3,
+    );
+    let chunk_hashes = blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
+    four_ary_parent_hash_blake2b(
+        &chunk_hashes[0],
+        &chunk_hashes[1],
+        &chunk_hashes[2],
+        &chunk_hashes[3],
+        finalization,
+    )
+}
+
+// A variant of standard Bao sticking with BLAKE2b but using a 4-ary tree. Here we don't even
+// bother to handle trees that aren't a power of 4 number of chunks, but of course we'd need to
+// define what to do there if we went with a 4-ary tree.
+pub fn hash_recurse_rayon_blake2b_4ary(
+    input: &[u8],
+    finalization: Finalization,
+) -> blake2b_simd::Hash {
+    assert!(input.len() > 0);
+    assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
+    if input.len() == 4 * CHUNK_SIZE {
+        return hash_four_chunk_4ary_subtree_blake2b(
+            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
+            finalization,
+        );
+    }
+    let quarter = input.len() / 4;
+    let ((child0, child1), (child2, child3)) = rayon::join(
+        || {
+            rayon::join(
+                || hash_recurse_rayon_blake2b_4ary(&input[0 * quarter..][..quarter], NotRoot),
+                || hash_recurse_rayon_blake2b_4ary(&input[1 * quarter..][..quarter], NotRoot),
+            )
+        },
+        || {
+            rayon::join(
+                || hash_recurse_rayon_blake2b_4ary(&input[2 * quarter..][..quarter], NotRoot),
+                || hash_recurse_rayon_blake2b_4ary(&input[3 * quarter..][..quarter], NotRoot),
+            )
+        },
+    );
+    four_ary_parent_hash_blake2b(&child0, &child1, &child2, &child3, finalization)
 }
 
 // We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
