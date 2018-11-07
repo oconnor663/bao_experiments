@@ -10,7 +10,7 @@ const LENGTH: usize = 1 << 24; // about 17 MB
 
 fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
     b.bytes = size as u64;
-    vec![0; size]
+    vec![0xff; size]
 }
 
 #[bench]
