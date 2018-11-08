@@ -5,6 +5,18 @@ extern crate rayon;
 
 use byteorder::{ByteOrder, LittleEndian};
 
+#[cfg(not(feature = "single"))]
+use rayon::join;
+
+#[cfg(feature = "single")]
+fn join<T1, F1, T2, F2>(f1: F1, f2: F2) -> (T1, T2)
+where
+    F1: FnOnce() -> T1,
+    F2: FnOnce() -> T2,
+{
+    (f1(), f2())
+}
+
 const HASH_SIZE: usize = 32;
 const HEADER_SIZE: usize = 8;
 const CHUNK_SIZE: usize = 4096;
@@ -218,7 +230,7 @@ fn hash_eight_chunk_subtree_blake2s(
 }
 
 // This is the current standard Bao function. Note that this repo only contains large benchmarks,
-// so there's no non-rayon version of this for short inputs.
+// so there's no serial fallback here for short inputs.
 fn bao_standard_recurse(input: &[u8], finalization: Finalization) -> blake2b_simd::Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk_blake2b(input, finalization);
@@ -235,7 +247,7 @@ fn bao_standard_recurse(input: &[u8], finalization: Finalization) -> blake2b_sim
         );
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    let (left_hash, right_hash) = rayon::join(
+    let (left_hash, right_hash) = join(
         || bao_standard_recurse(left, NotRoot),
         || bao_standard_recurse(right, NotRoot),
     );
@@ -267,7 +279,7 @@ pub fn bao_blake2s_recurse(input: &[u8], finalization: Finalization) -> blake2s_
         );
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    let (left_hash, right_hash) = rayon::join(
+    let (left_hash, right_hash) = join(
         || bao_blake2s_recurse(left, NotRoot),
         || bao_blake2s_recurse(right, NotRoot),
     );
@@ -338,15 +350,15 @@ fn bao_4ary_recurse(input: &[u8], finalization: Finalization) -> blake2b_simd::H
         );
     }
     let quarter = input.len() / 4;
-    let ((child0, child1), (child2, child3)) = rayon::join(
+    let ((child0, child1), (child2, child3)) = join(
         || {
-            rayon::join(
+            join(
                 || bao_4ary_recurse(&input[0 * quarter..][..quarter], NotRoot),
                 || bao_4ary_recurse(&input[1 * quarter..][..quarter], NotRoot),
             )
         },
         || {
-            rayon::join(
+            join(
                 || bao_4ary_recurse(&input[2 * quarter..][..quarter], NotRoot),
                 || bao_4ary_recurse(&input[3 * quarter..][..quarter], NotRoot),
             )
@@ -389,7 +401,7 @@ fn bao_standard_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
         return blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
     }
 
-    let (left_children, right_children) = rayon::join(
+    let (left_children, right_children) = join(
         || bao_standard_parallel_parents_recurse(&input[..input.len() / 2]),
         || bao_standard_parallel_parents_recurse(&input[input.len() / 2..]),
     );
@@ -452,15 +464,15 @@ pub fn bao_4ary_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
     }
 
     let quarter = input.len() / 4;
-    let ((children0, children1), (children2, children3)) = rayon::join(
+    let ((children0, children1), (children2, children3)) = join(
         || {
-            rayon::join(
+            join(
                 || bao_4ary_parallel_parents_recurse(&input[0 * quarter..][..quarter]),
                 || bao_4ary_parallel_parents_recurse(&input[1 * quarter..][..quarter]),
             )
         },
         || {
-            rayon::join(
+            join(
                 || bao_4ary_parallel_parents_recurse(&input[2 * quarter..][..quarter]),
                 || bao_4ary_parallel_parents_recurse(&input[3 * quarter..][..quarter]),
             )
@@ -519,7 +531,7 @@ fn bao_blake2b_large_chunks_recurse(
         );
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    let (left_hash, right_hash) = rayon::join(
+    let (left_hash, right_hash) = join(
         || bao_blake2b_large_chunks_recurse(left, NotRoot),
         || bao_blake2b_large_chunks_recurse(right, NotRoot),
     );
@@ -593,7 +605,7 @@ fn bao_blake2hybrid_recurse(input: &[u8], finalization: Finalization) -> Either 
         return parent_hash_either(&double0, &double1, finalization);
     }
     let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
-    let (left_hash, right_hash) = rayon::join(
+    let (left_hash, right_hash) = join(
         || bao_blake2hybrid_recurse(left, NotRoot),
         || bao_blake2hybrid_recurse(right, NotRoot),
     );
@@ -627,7 +639,7 @@ pub fn bao_blake2hybrid_parallel_parents_recurse(input: &[u8]) -> [Either; 8] {
         }
     }
 
-    let (children0, children1) = rayon::join(
+    let (children0, children1) = join(
         || bao_blake2hybrid_parallel_parents_recurse(&input[..input.len() / 2]),
         || bao_blake2hybrid_parallel_parents_recurse(&input[input.len() / 2..]),
     );
