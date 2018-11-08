@@ -63,4 +63,7 @@ Takeaways:
   size, which reduces the total number of parent nodes. This benchmark
   uses a 65536-byte chunk size, rather than the 4096-byte size used in
   the standard implementation, so there are 16x fewer parent nodes in
-  the large-chunk tree.
+  the large-chunk tree. These results are in line with previous
+  experiments around chunk size; see the [discussion
+  issue](https://github.com/oconnor663/bao/issues/17) about chunk size
+  tradeoffs.
