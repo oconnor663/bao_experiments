@@ -45,9 +45,9 @@ Takeaways:
   benchmarks](https://github.com/sneves/blake2-avx2/blob/master/bench.sh)
   run on my machine have BLAKE2sp slightly outperforming BLAKE2bp, while
   I'm getting the opposite from my Rust code.
-- Hashing multiple parents in parallel on a single thread also doesn't
-  seem to help. Again, I'm not sure why. Maybe growing the working set
-  of each thread hurts cache performance.
+- Hashing multiple parents in parallel on each thread also doesn't seem
+  to help. Again, I'm not sure why. Maybe growing the working set of
+  each thread hurts cache performance.
 - A 4-ary tree layout is about 4% faster, due to making full use of the
   128-byte BLAKE2b block size. The implementations we're testing here
   are simplified, though, without the logic necessary to handle
