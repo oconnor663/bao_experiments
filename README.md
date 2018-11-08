@@ -9,12 +9,6 @@ at reducing the overhead of hashing parent nodes:
 - Use `update4` (BLAKE2b) or `update8` (BLAKE2s) on parents. (We always
   use them on chunks.)
 
-For now, building this repo requires you to clone these two adjacent to
-it:
-
-- https://github.com/oconnor663/blake2b_simd
-- https://github.com/oconnor663/blake2s_simd
-
 Run the benchmarks with `cargo +nightly bench`. This executes the same
 benchmarks with `libtest` and with
 [`criterion`](https://github.com/japaric/criterion.rs). Note that the
