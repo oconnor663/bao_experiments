@@ -11,16 +11,6 @@ const LENGTH: usize = 1 << 24;
 // difference, but after a few seconds the processor heats up and turns it off.
 const WARMUP_SECS: u64 = 10;
 
-fn bench_blake2s(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2s", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_experiments::bao_blake2s(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
 fn bench_blake2b_standard(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
@@ -37,6 +27,26 @@ fn bench_blake2b_standard_parallel_parents(c: &mut Criterion) {
         Benchmark::new("bench_blake2b_standard_parallel_parents", |b| {
             let input = vec![0xff; LENGTH];
             b.iter(move || bao_experiments::bao_standard_parallel_parents(&input))
+        }).throughput(Throughput::Bytes(LENGTH as u32)),
+    );
+}
+
+fn bench_blake2s(c: &mut Criterion) {
+    c.bench(
+        "throughput_benches",
+        Benchmark::new("bench_blake2s", |b| {
+            let input = vec![0xff; LENGTH];
+            b.iter(move || bao_experiments::bao_blake2s(&input))
+        }).throughput(Throughput::Bytes(LENGTH as u32)),
+    );
+}
+
+fn bench_blake2s_parallel_parents(c: &mut Criterion) {
+    c.bench(
+        "throughput_benches",
+        Benchmark::new("bench_blake2s_parallel_parents", |b| {
+            let input = vec![0xff; LENGTH];
+            b.iter(move || bao_experiments::bao_blake2s_parallel_parents(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
@@ -96,9 +106,10 @@ criterion_group!(
     name = benches;
     config = Criterion::default().warm_up_time(Duration::from_secs(WARMUP_SECS));
     targets =
-        bench_blake2s,
         bench_blake2b_standard,
         bench_blake2b_standard_parallel_parents,
+        bench_blake2s,
+        bench_blake2s_parallel_parents,
         bench_blake2b_4ary,
         bench_blake2b_4ary_parallel_parents,
         bench_blake2b_large_chunks,

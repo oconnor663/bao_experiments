@@ -14,12 +14,6 @@ fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
 }
 
 #[bench]
-fn bench_blake2s(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_experiments::bao_blake2s(&input));
-}
-
-#[bench]
 fn bench_blake2b_standard(b: &mut Bencher) {
     let input = input(b, LENGTH);
     b.iter(|| bao_experiments::bao_standard(&input));
@@ -29,6 +23,18 @@ fn bench_blake2b_standard(b: &mut Bencher) {
 fn bench_blake2b_standard_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
     b.iter(|| bao_experiments::bao_standard_parallel_parents(&input));
+}
+
+#[bench]
+fn bench_blake2s(b: &mut Bencher) {
+    let input = input(b, LENGTH);
+    b.iter(|| bao_experiments::bao_blake2s(&input));
+}
+
+#[bench]
+fn bench_blake2s_parallel_parents(b: &mut Bencher) {
+    let input = input(b, LENGTH);
+    b.iter(|| bao_experiments::bao_blake2s_parallel_parents(&input));
 }
 
 #[bench]

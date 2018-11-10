@@ -439,6 +439,122 @@ pub fn bao_standard_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
     parent_hash_blake2b(&left_hash, &right_hash, Root(input.len() as u64))
 }
 
+// Similar to bao_standard_parallel_parents, but with BLAKE2s.
+fn bao_blake2s_parallel_parents_recurse(input: &[u8]) -> [blake2s_simd::Hash; 8] {
+    // A real version of this algorithm would of course need to handle uneven inputs.
+    assert!(input.len() > 0);
+    assert_eq!(0, input.len() % (8 * CHUNK_SIZE));
+
+    if input.len() == 8 * CHUNK_SIZE {
+        let mut state0 = new_chunk_state_blake2s();
+        let mut state1 = new_chunk_state_blake2s();
+        let mut state2 = new_chunk_state_blake2s();
+        let mut state3 = new_chunk_state_blake2s();
+        let mut state4 = new_chunk_state_blake2s();
+        let mut state5 = new_chunk_state_blake2s();
+        let mut state6 = new_chunk_state_blake2s();
+        let mut state7 = new_chunk_state_blake2s();
+        blake2s_simd::update8(
+            &mut state0,
+            &mut state1,
+            &mut state2,
+            &mut state3,
+            &mut state4,
+            &mut state5,
+            &mut state6,
+            &mut state7,
+            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[4 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[5 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[6 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[7 * CHUNK_SIZE..][..CHUNK_SIZE],
+        );
+        return blake2s_simd::finalize8(
+            &mut state0,
+            &mut state1,
+            &mut state2,
+            &mut state3,
+            &mut state4,
+            &mut state5,
+            &mut state6,
+            &mut state7,
+        );
+    }
+
+    let (left_children, right_children) = join(
+        || bao_blake2s_parallel_parents_recurse(&input[..input.len() / 2]),
+        || bao_blake2s_parallel_parents_recurse(&input[input.len() / 2..]),
+    );
+    let mut state0 = new_parent_state_blake2s();
+    let mut state1 = new_parent_state_blake2s();
+    let mut state2 = new_parent_state_blake2s();
+    let mut state3 = new_parent_state_blake2s();
+    let mut state4 = new_parent_state_blake2s();
+    let mut state5 = new_parent_state_blake2s();
+    let mut state6 = new_parent_state_blake2s();
+    let mut state7 = new_parent_state_blake2s();
+    blake2s_simd::update8(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &mut state4,
+        &mut state5,
+        &mut state6,
+        &mut state7,
+        &left_children[0].as_bytes(),
+        &left_children[2].as_bytes(),
+        &left_children[4].as_bytes(),
+        &left_children[6].as_bytes(),
+        &right_children[0].as_bytes(),
+        &right_children[2].as_bytes(),
+        &right_children[4].as_bytes(),
+        &right_children[6].as_bytes(),
+    );
+    blake2s_simd::update8(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &mut state4,
+        &mut state5,
+        &mut state6,
+        &mut state7,
+        &left_children[1].as_bytes(),
+        &left_children[3].as_bytes(),
+        &left_children[5].as_bytes(),
+        &left_children[7].as_bytes(),
+        &right_children[1].as_bytes(),
+        &right_children[3].as_bytes(),
+        &right_children[5].as_bytes(),
+        &right_children[7].as_bytes(),
+    );
+    blake2s_simd::finalize8(
+        &mut state0,
+        &mut state1,
+        &mut state2,
+        &mut state3,
+        &mut state4,
+        &mut state5,
+        &mut state6,
+        &mut state7,
+    )
+}
+
+pub fn bao_blake2s_parallel_parents(input: &[u8]) -> blake2s_simd::Hash {
+    let children = bao_blake2s_parallel_parents_recurse(input);
+    let double0 = parent_hash_blake2s(&children[0], &children[1], NotRoot);
+    let double1 = parent_hash_blake2s(&children[2], &children[3], NotRoot);
+    let double2 = parent_hash_blake2s(&children[4], &children[5], NotRoot);
+    let double3 = parent_hash_blake2s(&children[6], &children[7], NotRoot);
+    let quad0 = parent_hash_blake2s(&double0, &double1, NotRoot);
+    let quad1 = parent_hash_blake2s(&double2, &double3, NotRoot);
+    parent_hash_blake2s(&quad0, &quad1, Root(input.len() as u64))
+}
+
 // A variant that takes advantage of *both* 4-way parent hashing and a 4-ary tree.
 pub fn bao_4ary_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4] {
     // A real version of this algorithm would of course need to handle uneven inputs.
@@ -717,8 +833,6 @@ pub fn bao_blake2hybrid_parallel_parents(input: &[u8]) -> Either {
     parent_hash_either(&quad0, &quad1, Root(input.len() as u64))
 }
 
-// We don't have test vectors for the BLAKE2s or the 4-way BLAKE2b implementations, but we can at
-// least test the two implementations above that produce standard output.
 #[cfg(test)]
 mod test {
     use super::*;
@@ -737,6 +851,16 @@ mod test {
         let expected = "99ca8f9f6a14d792bc33425268739f28c4a24f817eb92431101e20886a102c1d";
         let hash = bao_standard_parallel_parents(&input);
         assert_eq!(expected, &*hash.to_hex());
+    }
+
+    // We don't have test vectors for the Bao-BLAKE2s, but we can at least test the two
+    // implementations above that produce standard output.
+    #[test]
+    fn test_blake2s_implementations() {
+        let input = vec![0; 1 << 24];
+        let hash1 = bao_blake2s(&input);
+        let hash2 = bao_blake2s_parallel_parents(&input);
+        assert_eq!(hash1, hash2);
     }
 
     // Likewise, we can at least make sure that the two 4-ary implementations produce the same
