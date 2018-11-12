@@ -3,6 +3,7 @@ extern crate criterion;
 
 use bao_experiments::*;
 use criterion::*;
+use std::mem;
 use std::time::Duration;
 
 // The current 4ary implementation is only defined for inputs that are a power
@@ -107,15 +108,15 @@ fn bench_load_8_blake2s_blocks_simple(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_simple", |b| {
-            let block0 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block1 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block2 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block3 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block4 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block5 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block6 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block7 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let mut out = mem::uninitialized();
+            let block0 = avx2_blake2s_load::random_block();
+            let block1 = avx2_blake2s_load::random_block();
+            let block2 = avx2_blake2s_load::random_block();
+            let block3 = avx2_blake2s_load::random_block();
+            let block4 = avx2_blake2s_load::random_block();
+            let block5 = avx2_blake2s_load::random_block();
+            let block6 = avx2_blake2s_load::random_block();
+            let block7 = avx2_blake2s_load::random_block();
+            let mut out = unsafe { mem::zeroed() };
             b.iter(move || unsafe {
                 avx2_blake2s_load::load_msg_vecs_simple(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
@@ -129,15 +130,15 @@ fn bench_load_8_blake2s_blocks_interleave(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_interleave", |b| {
-            let block0 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block1 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block2 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block3 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block4 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block5 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block6 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block7 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let mut out = mem::uninitialized();
+            let block0 = avx2_blake2s_load::random_block();
+            let block1 = avx2_blake2s_load::random_block();
+            let block2 = avx2_blake2s_load::random_block();
+            let block3 = avx2_blake2s_load::random_block();
+            let block4 = avx2_blake2s_load::random_block();
+            let block5 = avx2_blake2s_load::random_block();
+            let block6 = avx2_blake2s_load::random_block();
+            let block7 = avx2_blake2s_load::random_block();
+            let mut out = unsafe { mem::zeroed() };
             b.iter(move || unsafe {
                 avx2_blake2s_load::load_msg_vecs_interleave(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
@@ -151,15 +152,15 @@ fn bench_load_8_blake2s_blocks_gather(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_gather", |b| {
-            let block0 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block1 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block2 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block3 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block4 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block5 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block6 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let block7 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let mut out = mem::uninitialized();
+            let block0 = avx2_blake2s_load::random_block();
+            let block1 = avx2_blake2s_load::random_block();
+            let block2 = avx2_blake2s_load::random_block();
+            let block3 = avx2_blake2s_load::random_block();
+            let block4 = avx2_blake2s_load::random_block();
+            let block5 = avx2_blake2s_load::random_block();
+            let block6 = avx2_blake2s_load::random_block();
+            let block7 = avx2_blake2s_load::random_block();
+            let mut out = unsafe { mem::zeroed() };
             b.iter(move || unsafe {
                 avx2_blake2s_load::load_msg_vecs_gather(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
@@ -173,8 +174,8 @@ fn bench_load_8_blake2s_blocks_gather_inner(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_gather_inner", |b| {
-            let blocks = [1; 8 * avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            let mut out = mem::uninitialized();
+            let blocks = avx2_blake2s_load::random_8_blocks();
+            let mut out = unsafe { mem::zeroed() };
             b.iter(move || unsafe { avx2_blake2s_load::gather_from_blocks(&blocks, &mut out) })
         }),
     );
@@ -184,12 +185,15 @@ fn bench_load_4_blake2b_blocks_simple(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_simple", |b| {
-            let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block0 = avx2_blake2b_load::random_block();
+            let block1 = avx2_blake2b_load::random_block();
+            let block2 = avx2_blake2b_load::random_block();
+            let block3 = avx2_blake2b_load::random_block();
+            let mut out = unsafe { mem::zeroed() };
             b.iter(move || unsafe {
-                avx2_blake2b_load::load_msg_vecs_simple(&block0, &block1, &block2, &block3)
+                avx2_blake2b_load::load_msg_vecs_simple(
+                    &block0, &block1, &block2, &block3, &mut out,
+                );
             })
         }),
     );
@@ -198,12 +202,15 @@ fn bench_load_4_blake2b_blocks_interleave(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_interleave", |b| {
-            let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block0 = avx2_blake2b_load::random_block();
+            let block1 = avx2_blake2b_load::random_block();
+            let block2 = avx2_blake2b_load::random_block();
+            let block3 = avx2_blake2b_load::random_block();
+            let mut out = unsafe { mem::zeroed() };
             b.iter(move || unsafe {
-                avx2_blake2b_load::load_msg_vecs_interleave(&block0, &block1, &block2, &block3)
+                avx2_blake2b_load::load_msg_vecs_interleave(
+                    &block0, &block1, &block2, &block3, &mut out,
+                );
             })
         }),
     );
@@ -212,12 +219,15 @@ fn bench_load_4_blake2b_blocks_gather(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_gather", |b| {
-            let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block0 = avx2_blake2b_load::random_block();
+            let block1 = avx2_blake2b_load::random_block();
+            let block2 = avx2_blake2b_load::random_block();
+            let block3 = avx2_blake2b_load::random_block();
+            let mut out = unsafe { mem::zeroed() };
             b.iter(move || unsafe {
-                avx2_blake2b_load::load_msg_vecs_gather(&block0, &block1, &block2, &block3)
+                avx2_blake2b_load::load_msg_vecs_gather(
+                    &block0, &block1, &block2, &block3, &mut out,
+                );
             })
         }),
     );
@@ -226,8 +236,9 @@ fn bench_load_4_blake2b_blocks_gather_inner(c: &mut Criterion) {
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_gather_inner", |b| {
-            let blocks = [1; 4 * avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-            b.iter(move || unsafe { avx2_blake2b_load::gather_from_blocks(&blocks) })
+            let blocks = avx2_blake2b_load::random_4_blocks();
+            let mut out = unsafe { mem::zeroed() };
+            b.iter(move || unsafe { avx2_blake2b_load::gather_from_blocks(&blocks, &mut out) })
         }),
     );
 }

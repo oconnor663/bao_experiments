@@ -41,25 +41,24 @@ pub unsafe fn load_msg_vecs_simple(
     msg1: &[u8; BLAKE2B_BLOCKBYTES],
     msg2: &[u8; BLAKE2B_BLOCKBYTES],
     msg3: &[u8; BLAKE2B_BLOCKBYTES],
-) -> [__m256i; 16] {
-    [
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 0),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 1),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 2),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 3),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 4),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 5),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 6),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 7),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 8),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 9),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 10),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 11),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 12),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 13),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 14),
-        load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 15),
-    ]
+    out: &mut [__m256i; 16],
+) {
+    out[0] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 0);
+    out[1] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 1);
+    out[2] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 2);
+    out[3] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 3);
+    out[4] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 4);
+    out[5] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 5);
+    out[6] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 6);
+    out[7] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 7);
+    out[8] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 8);
+    out[9] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 9);
+    out[10] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 10);
+    out[11] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 11);
+    out[12] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 12);
+    out[13] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 13);
+    out[14] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 14);
+    out[15] = load_one_msg_vec_simple(msg0, msg1, msg2, msg3, 15);
 }
 
 #[inline(always)]
@@ -106,7 +105,8 @@ pub unsafe fn load_msg_vecs_interleave(
     msg_b: &[u8; BLAKE2B_BLOCKBYTES],
     msg_c: &[u8; BLAKE2B_BLOCKBYTES],
     msg_d: &[u8; BLAKE2B_BLOCKBYTES],
-) -> [__m256i; 16] {
+    out: &mut [__m256i; 16],
+) {
     let (a0, a1, a2, a3) = load_4x256(msg_a);
     let (b0, b1, b2, b3) = load_4x256(msg_b);
     let (c0, c1, c2, c3) = load_4x256(msg_c);
@@ -116,53 +116,50 @@ pub unsafe fn load_msg_vecs_interleave(
     let interleaved1 = interleave_vecs(a1, b1, c1, d1);
     let interleaved2 = interleave_vecs(a2, b2, c2, d2);
     let interleaved3 = interleave_vecs(a3, b3, c3, d3);
-    [
-        interleaved0[0],
-        interleaved0[1],
-        interleaved0[2],
-        interleaved0[3],
-        interleaved1[0],
-        interleaved1[1],
-        interleaved1[2],
-        interleaved1[3],
-        interleaved2[0],
-        interleaved2[1],
-        interleaved2[2],
-        interleaved2[3],
-        interleaved3[0],
-        interleaved3[1],
-        interleaved3[2],
-        interleaved3[3],
-    ]
+
+    out[0] = interleaved0[0];
+    out[1] = interleaved0[1];
+    out[2] = interleaved0[2];
+    out[3] = interleaved0[3];
+    out[4] = interleaved1[0];
+    out[5] = interleaved1[1];
+    out[6] = interleaved1[2];
+    out[7] = interleaved1[3];
+    out[8] = interleaved2[0];
+    out[9] = interleaved2[1];
+    out[10] = interleaved2[2];
+    out[11] = interleaved2[3];
+    out[12] = interleaved3[0];
+    out[13] = interleaved3[1];
+    out[14] = interleaved3[2];
+    out[15] = interleaved3[3];
 }
 
 #[target_feature(enable = "avx2")]
-pub unsafe fn gather_from_blocks(blocks: &[u8; 4 * BLAKE2B_BLOCKBYTES]) -> [__m256i; 16] {
+pub unsafe fn gather_from_blocks(blocks: &[u8; 4 * BLAKE2B_BLOCKBYTES], out: &mut [__m256i; 16]) {
     let indexes = load_128_from_4xu32(
         0 * BLAKE2B_BLOCKBYTES as u32,
         1 * BLAKE2B_BLOCKBYTES as u32,
         2 * BLAKE2B_BLOCKBYTES as u32,
         3 * BLAKE2B_BLOCKBYTES as u32,
     );
-    [
-        // Safety note: I don't believe VPGATHERDD has alignment requirements.
-        _mm256_i32gather_epi64(blocks.as_ptr().add(0) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(8) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(16) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(24) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(32) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(40) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(48) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(56) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(64) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(72) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(80) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(88) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(96) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(104) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(112) as *const i64, indexes, 1),
-        _mm256_i32gather_epi64(blocks.as_ptr().add(120) as *const i64, indexes, 1),
-    ]
+    // Safety note: I don't believe VPGATHERDD has alignment requirements.
+    out[0] = _mm256_i32gather_epi64(blocks.as_ptr().add(0) as *const i64, indexes, 1);
+    out[1] = _mm256_i32gather_epi64(blocks.as_ptr().add(8) as *const i64, indexes, 1);
+    out[2] = _mm256_i32gather_epi64(blocks.as_ptr().add(16) as *const i64, indexes, 1);
+    out[3] = _mm256_i32gather_epi64(blocks.as_ptr().add(24) as *const i64, indexes, 1);
+    out[4] = _mm256_i32gather_epi64(blocks.as_ptr().add(32) as *const i64, indexes, 1);
+    out[5] = _mm256_i32gather_epi64(blocks.as_ptr().add(40) as *const i64, indexes, 1);
+    out[6] = _mm256_i32gather_epi64(blocks.as_ptr().add(48) as *const i64, indexes, 1);
+    out[7] = _mm256_i32gather_epi64(blocks.as_ptr().add(56) as *const i64, indexes, 1);
+    out[8] = _mm256_i32gather_epi64(blocks.as_ptr().add(64) as *const i64, indexes, 1);
+    out[9] = _mm256_i32gather_epi64(blocks.as_ptr().add(72) as *const i64, indexes, 1);
+    out[10] = _mm256_i32gather_epi64(blocks.as_ptr().add(80) as *const i64, indexes, 1);
+    out[11] = _mm256_i32gather_epi64(blocks.as_ptr().add(88) as *const i64, indexes, 1);
+    out[12] = _mm256_i32gather_epi64(blocks.as_ptr().add(96) as *const i64, indexes, 1);
+    out[13] = _mm256_i32gather_epi64(blocks.as_ptr().add(104) as *const i64, indexes, 1);
+    out[14] = _mm256_i32gather_epi64(blocks.as_ptr().add(112) as *const i64, indexes, 1);
+    out[15] = _mm256_i32gather_epi64(blocks.as_ptr().add(120) as *const i64, indexes, 1);
 }
 
 #[target_feature(enable = "avx2")]
@@ -171,7 +168,8 @@ pub unsafe fn load_msg_vecs_gather(
     msg_1: &[u8; BLAKE2B_BLOCKBYTES],
     msg_2: &[u8; BLAKE2B_BLOCKBYTES],
     msg_3: &[u8; BLAKE2B_BLOCKBYTES],
-) -> [__m256i; 16] {
+    out: &mut [__m256i; 16],
+) {
     let mut buf = [0u8; 4 * BLAKE2B_BLOCKBYTES];
     {
         let refs = mut_array_refs!(
@@ -186,7 +184,7 @@ pub unsafe fn load_msg_vecs_gather(
         *refs.2 = *msg_2;
         *refs.3 = *msg_3;
     }
-    gather_from_blocks(&buf)
+    gather_from_blocks(&buf, out);
 }
 
 pub fn random_block() -> [u8; BLAKE2B_BLOCKBYTES] {
@@ -285,11 +283,14 @@ mod test {
                 BLAKE2B_BLOCKBYTES
             );
 
-            let expected_vecs = load_msg_vecs_simple(blocks.0, blocks.1, blocks.2, blocks.3);
+            let mut expected_vecs = mem::zeroed();
+            load_msg_vecs_simple(blocks.0, blocks.1, blocks.2, blocks.3, &mut expected_vecs);
 
-            let interleave_vecs = load_msg_vecs_interleave(blocks.0, blocks.1, blocks.2, blocks.3);
+            let mut interleave_vecs = mem::zeroed();
+            load_msg_vecs_interleave(blocks.0, blocks.1, blocks.2, blocks.3, &mut interleave_vecs);
 
-            let gather_vecs = load_msg_vecs_gather(blocks.0, blocks.1, blocks.2, blocks.3);
+            let mut gather_vecs = mem::zeroed();
+            load_msg_vecs_gather(blocks.0, blocks.1, blocks.2, blocks.3, &mut gather_vecs);
 
             for i in 0..expected_vecs.len() {
                 assert_eq!(cast_out(expected_vecs[i]), cast_out(interleave_vecs[i]));

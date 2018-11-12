@@ -140,39 +140,43 @@ fn bench_load_8_blake2s_blocks_gather_inner(b: &mut Bencher) {
 
 #[bench]
 fn bench_load_4_blake2b_blocks_simple(b: &mut Bencher) {
-    let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+    let block0 = avx2_blake2b_load::random_block();
+    let block1 = avx2_blake2b_load::random_block();
+    let block2 = avx2_blake2b_load::random_block();
+    let block3 = avx2_blake2b_load::random_block();
+    let mut out = unsafe { mem::zeroed() };
     b.iter(|| unsafe {
-        avx2_blake2b_load::load_msg_vecs_simple(&block0, &block1, &block2, &block3)
+        avx2_blake2b_load::load_msg_vecs_simple(&block0, &block1, &block2, &block3, &mut out)
     })
 }
 
 #[bench]
 fn bench_load_4_blake2b_blocks_interleave(b: &mut Bencher) {
-    let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+    let block0 = avx2_blake2b_load::random_block();
+    let block1 = avx2_blake2b_load::random_block();
+    let block2 = avx2_blake2b_load::random_block();
+    let block3 = avx2_blake2b_load::random_block();
+    let mut out = unsafe { mem::zeroed() };
     b.iter(|| unsafe {
-        avx2_blake2b_load::load_msg_vecs_interleave(&block0, &block1, &block2, &block3)
+        avx2_blake2b_load::load_msg_vecs_interleave(&block0, &block1, &block2, &block3, &mut out)
     })
 }
 
 #[bench]
 fn bench_load_4_blake2b_blocks_gather(b: &mut Bencher) {
-    let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+    let block0 = avx2_blake2b_load::random_block();
+    let block1 = avx2_blake2b_load::random_block();
+    let block2 = avx2_blake2b_load::random_block();
+    let block3 = avx2_blake2b_load::random_block();
+    let mut out = unsafe { mem::zeroed() };
     b.iter(|| unsafe {
-        avx2_blake2b_load::load_msg_vecs_gather(&block0, &block1, &block2, &block3)
+        avx2_blake2b_load::load_msg_vecs_gather(&block0, &block1, &block2, &block3, &mut out)
     })
 }
 
 #[bench]
 fn bench_load_4_blake2b_blocks_gather_inner(b: &mut Bencher) {
-    let blocks = [1; 4 * avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
-    b.iter(|| unsafe { avx2_blake2b_load::gather_from_blocks(&blocks) })
+    let blocks = avx2_blake2b_load::random_4_blocks();
+    let mut out = unsafe { mem::zeroed() };
+    b.iter(|| unsafe { avx2_blake2b_load::gather_from_blocks(&blocks, &mut out) })
 }
