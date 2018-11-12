@@ -23,6 +23,8 @@ const HEADER_SIZE: usize = 8;
 const CHUNK_SIZE: usize = 4096;
 
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+pub mod avx2_blake2b_load;
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 pub mod avx2_blake2s_load;
 
 fn encode_len(len: u64) -> [u8; HEADER_SIZE] {

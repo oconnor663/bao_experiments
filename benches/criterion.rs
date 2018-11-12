@@ -173,6 +173,58 @@ fn bench_load_8_blake2s_blocks_gather_inner(c: &mut Criterion) {
     );
 }
 
+fn bench_load_8_blake2b_blocks_simple(c: &mut Criterion) {
+    c.bench(
+        "loading_benches",
+        Benchmark::new("bench_load_8_blake2b_blocks_simple", |b| {
+            let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            b.iter(move || unsafe {
+                avx2_blake2b_load::load_msg_vecs_simple(&block0, &block1, &block2, &block3)
+            })
+        }),
+    );
+}
+fn bench_load_8_blake2b_blocks_interleave(c: &mut Criterion) {
+    c.bench(
+        "loading_benches",
+        Benchmark::new("bench_load_8_blake2b_blocks_interleave", |b| {
+            let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            b.iter(move || unsafe {
+                avx2_blake2b_load::load_msg_vecs_interleave(&block0, &block1, &block2, &block3)
+            })
+        }),
+    );
+}
+fn bench_load_8_blake2b_blocks_gather(c: &mut Criterion) {
+    c.bench(
+        "loading_benches",
+        Benchmark::new("bench_load_8_blake2b_blocks_gather", |b| {
+            let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            let block3 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            b.iter(move || unsafe {
+                avx2_blake2b_load::load_msg_vecs_gather(&block0, &block1, &block2, &block3)
+            })
+        }),
+    );
+}
+fn bench_load_8_blake2b_blocks_gather_inner(c: &mut Criterion) {
+    c.bench(
+        "loading_benches",
+        Benchmark::new("bench_load_8_blake2b_blocks_gather_inner", |b| {
+            let blocks = [1; 4 * avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
+            b.iter(move || unsafe { avx2_blake2b_load::gather_from_blocks(&blocks) })
+        }),
+    );
+}
+
 criterion_group!(
     name = throughput_benches;
     config = Criterion::default().warm_up_time(Duration::from_secs(WARMUP_SECS));
@@ -195,5 +247,9 @@ criterion_group!(
         bench_load_8_blake2s_blocks_interleave,
         bench_load_8_blake2s_blocks_gather,
         bench_load_8_blake2s_blocks_gather_inner,
+        bench_load_8_blake2b_blocks_simple,
+        bench_load_8_blake2b_blocks_interleave,
+        bench_load_8_blake2b_blocks_gather,
+        bench_load_8_blake2b_blocks_gather_inner,
 );
 criterion_main!(throughput_benches, loading_benches);
