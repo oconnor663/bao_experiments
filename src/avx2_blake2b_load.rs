@@ -1,5 +1,6 @@
 use arrayref::mut_array_refs;
 use byteorder::{ByteOrder, LittleEndian};
+use rand::prelude::*;
 
 #[cfg(target_arch = "x86")]
 use std::arch::x86::*;
@@ -186,6 +187,18 @@ pub unsafe fn load_msg_vecs_gather(
         *refs.3 = *msg_3;
     }
     gather_from_blocks(&buf)
+}
+
+pub fn random_block() -> [u8; BLAKE2B_BLOCKBYTES] {
+    let mut bytes = [0; BLAKE2B_BLOCKBYTES];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    bytes
+}
+
+pub fn random_4_blocks() -> [u8; 4 * BLAKE2B_BLOCKBYTES] {
+    let mut bytes = [0; 4 * BLAKE2B_BLOCKBYTES];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    bytes
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ blake2b_simd = { git = "https://github.com/oconnor663/blake2b_simd" }
 blake2s_simd = { git = "https://github.com/oconnor663/blake2s_simd" }
 byteorder = { version = "1.2.4", default-features = false }
 rayon = { version = "1.0.2" }
+rand = "0.5.5"
 
 [dev-dependencies]
 criterion = "0.2"

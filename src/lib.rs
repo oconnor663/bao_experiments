@@ -2,6 +2,7 @@ extern crate arrayref;
 extern crate blake2b_simd;
 extern crate blake2s_simd;
 extern crate byteorder;
+extern crate rand;
 extern crate rayon;
 
 use byteorder::{ByteOrder, LittleEndian};

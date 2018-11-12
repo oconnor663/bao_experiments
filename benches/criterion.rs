@@ -115,9 +115,11 @@ fn bench_load_8_blake2s_blocks_simple(c: &mut Criterion) {
             let block5 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
             let block6 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
             let block7 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
+            let mut out = mem::uninitialized();
             b.iter(move || unsafe {
                 avx2_blake2s_load::load_msg_vecs_simple(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
+                    &mut out,
                 )
             })
         }),
@@ -135,9 +137,11 @@ fn bench_load_8_blake2s_blocks_interleave(c: &mut Criterion) {
             let block5 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
             let block6 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
             let block7 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
+            let mut out = mem::uninitialized();
             b.iter(move || unsafe {
                 avx2_blake2s_load::load_msg_vecs_interleave(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
+                    &mut out,
                 )
             })
         }),
@@ -155,9 +159,11 @@ fn bench_load_8_blake2s_blocks_gather(c: &mut Criterion) {
             let block5 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
             let block6 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
             let block7 = [0; avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
+            let mut out = mem::uninitialized();
             b.iter(move || unsafe {
                 avx2_blake2s_load::load_msg_vecs_gather(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
+                    &mut out,
                 )
             })
         }),
@@ -168,7 +174,8 @@ fn bench_load_8_blake2s_blocks_gather_inner(c: &mut Criterion) {
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_gather_inner", |b| {
             let blocks = [1; 8 * avx2_blake2s_load::BLAKE2S_BLOCKBYTES];
-            b.iter(move || unsafe { avx2_blake2s_load::gather_from_blocks(&blocks) })
+            let mut out = mem::uninitialized();
+            b.iter(move || unsafe { avx2_blake2s_load::gather_from_blocks(&blocks, &mut out) })
         }),
     );
 }
