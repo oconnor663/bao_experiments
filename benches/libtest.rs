@@ -127,7 +127,7 @@ fn bench_load_8_blake2s_blocks_gather_inner(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_load_8_blake2b_blocks_simple(b: &mut Bencher) {
+fn bench_load_4_blake2b_blocks_simple(b: &mut Bencher) {
     let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
     let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
     let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
@@ -138,7 +138,7 @@ fn bench_load_8_blake2b_blocks_simple(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_load_8_blake2b_blocks_interleave(b: &mut Bencher) {
+fn bench_load_4_blake2b_blocks_interleave(b: &mut Bencher) {
     let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
     let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
     let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
@@ -149,7 +149,7 @@ fn bench_load_8_blake2b_blocks_interleave(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_load_8_blake2b_blocks_gather(b: &mut Bencher) {
+fn bench_load_4_blake2b_blocks_gather(b: &mut Bencher) {
     let block0 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
     let block1 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
     let block2 = [0; avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
@@ -160,7 +160,7 @@ fn bench_load_8_blake2b_blocks_gather(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_load_8_blake2b_blocks_gather_inner(b: &mut Bencher) {
+fn bench_load_4_blake2b_blocks_gather_inner(b: &mut Bencher) {
     let blocks = [1; 4 * avx2_blake2b_load::BLAKE2B_BLOCKBYTES];
     b.iter(|| unsafe { avx2_blake2b_load::gather_from_blocks(&blocks) })
 }
