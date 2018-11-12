@@ -121,8 +121,9 @@ fn bench_load_8_blake2s_blocks_simple(c: &mut Criterion) {
                 avx2_blake2s_load::load_msg_vecs_simple(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
                     &mut out,
-                )
-            })
+                );
+                criterion::black_box(&out);
+            });
         }),
     );
 }
@@ -143,8 +144,9 @@ fn bench_load_8_blake2s_blocks_interleave(c: &mut Criterion) {
                 avx2_blake2s_load::load_msg_vecs_interleave(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
                     &mut out,
-                )
-            })
+                );
+                criterion::black_box(&out);
+            });
         }),
     );
 }
@@ -165,8 +167,9 @@ fn bench_load_8_blake2s_blocks_gather(c: &mut Criterion) {
                 avx2_blake2s_load::load_msg_vecs_gather(
                     &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7,
                     &mut out,
-                )
-            })
+                );
+                criterion::black_box(&out);
+            });
         }),
     );
 }
@@ -176,7 +179,10 @@ fn bench_load_8_blake2s_blocks_gather_inner(c: &mut Criterion) {
         Benchmark::new("bench_load_8_blake2s_blocks_gather_inner", |b| {
             let blocks = avx2_blake2s_load::random_8_blocks();
             let mut out = unsafe { mem::zeroed() };
-            b.iter(move || unsafe { avx2_blake2s_load::gather_from_blocks(&blocks, &mut out) })
+            b.iter(move || unsafe {
+                avx2_blake2s_load::gather_from_blocks(&blocks, &mut out);
+                criterion::black_box(&mut out);
+            });
         }),
     );
 }
@@ -194,7 +200,8 @@ fn bench_load_4_blake2b_blocks_simple(c: &mut Criterion) {
                 avx2_blake2b_load::load_msg_vecs_simple(
                     &block0, &block1, &block2, &block3, &mut out,
                 );
-            })
+                criterion::black_box(&mut out);
+            });
         }),
     );
 }
@@ -211,7 +218,8 @@ fn bench_load_4_blake2b_blocks_interleave(c: &mut Criterion) {
                 avx2_blake2b_load::load_msg_vecs_interleave(
                     &block0, &block1, &block2, &block3, &mut out,
                 );
-            })
+                criterion::black_box(&mut out);
+            });
         }),
     );
 }
@@ -228,7 +236,8 @@ fn bench_load_4_blake2b_blocks_gather(c: &mut Criterion) {
                 avx2_blake2b_load::load_msg_vecs_gather(
                     &block0, &block1, &block2, &block3, &mut out,
                 );
-            })
+                criterion::black_box(&mut out);
+            });
         }),
     );
 }
@@ -238,7 +247,10 @@ fn bench_load_4_blake2b_blocks_gather_inner(c: &mut Criterion) {
         Benchmark::new("bench_load_4_blake2b_blocks_gather_inner", |b| {
             let blocks = avx2_blake2b_load::random_4_blocks();
             let mut out = unsafe { mem::zeroed() };
-            b.iter(move || unsafe { avx2_blake2b_load::gather_from_blocks(&blocks, &mut out) })
+            b.iter(move || unsafe {
+                avx2_blake2b_load::gather_from_blocks(&blocks, &mut out);
+                criterion::black_box(&mut out);
+            });
         }),
     );
 }
