@@ -261,11 +261,19 @@ fn bench_load_4_blake2b_blocks_gather_inner(c: &mut Criterion) {
     );
 }
 
+// For the first benchmark, use an extra long warmup, to make sure it doesn't unfairly benefit from
+// going first.
+criterion_group!(
+    name = warmup_bench;
+    config = Criterion::default().warm_up_time(std::time::Duration::from_secs(10));
+    targets =
+        bench_blake2b_standard,
+);
+
 criterion_group!(
     name = throughput_benches;
     config = Criterion::default();
     targets =
-        bench_blake2b_standard,
         bench_blake2b_standard_parallel_parents,
         bench_blake2s,
         bench_blake2s_parallel_parents,
@@ -276,6 +284,7 @@ criterion_group!(
         bench_blake2hybrid,
         bench_blake2hybrid_parallel_parents,
 );
+
 criterion_group!(
     name = loading_benches;
     config = Criterion::default();
@@ -289,4 +298,5 @@ criterion_group!(
         bench_load_4_blake2b_blocks_gather,
         bench_load_4_blake2b_blocks_gather_inner,
 );
-criterion_main!(throughput_benches, loading_benches);
+
+criterion_main!(warmup_bench, throughput_benches, loading_benches);
