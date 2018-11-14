@@ -4,14 +4,10 @@ extern crate criterion;
 use bao_experiments::*;
 use criterion::*;
 use std::mem;
-use std::time::Duration;
 
 // The current 4ary implementation is only defined for inputs that are a power
 // of 4 times the chunk size. 2^24 bytes is about 17 MB.
 const LENGTH: usize = 1 << 24;
-// A long warmup seems important for getting consistent numbers. Intel "Turbo Boost" makes a big
-// difference, but after a few seconds the processor heats up and turns it off.
-const WARMUP_SECS: u64 = 10;
 
 fn bench_blake2b_standard(c: &mut Criterion) {
     c.bench(
@@ -257,7 +253,7 @@ fn bench_load_4_blake2b_blocks_gather_inner(c: &mut Criterion) {
 
 criterion_group!(
     name = throughput_benches;
-    config = Criterion::default().warm_up_time(Duration::from_secs(WARMUP_SECS));
+    config = Criterion::default();
     targets =
         bench_blake2b_standard,
         bench_blake2b_standard_parallel_parents,
