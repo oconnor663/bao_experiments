@@ -589,6 +589,43 @@ pub fn bao_blake2b_large_chunks(input: &[u8]) -> blake2b_simd::Hash {
     bao_blake2b_large_chunks_recurse(input, Root(input.len() as u64))
 }
 
+// Modified Bao using BLAKE2s and a larger chunk size.
+fn bao_blake2s_large_chunks_recurse(
+    input: &[u8],
+    finalization: Finalization,
+) -> blake2s_simd::Hash {
+    const LARGE_CHUNK: usize = 65536;
+
+    if input.len() <= LARGE_CHUNK {
+        return hash_chunk_blake2s(input, finalization);
+    }
+    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
+    // with SIMD is more efficient than going one by one.
+    if input.len() == 8 * LARGE_CHUNK {
+        return hash_eight_chunk_subtree_blake2s(
+            &input[0 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[1 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[2 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[3 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[0 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[1 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[2 * LARGE_CHUNK..][..LARGE_CHUNK],
+            &input[3 * LARGE_CHUNK..][..LARGE_CHUNK],
+            finalization,
+        );
+    }
+    let (left, right) = input.split_at(left_len(input.len() as u64) as usize);
+    let (left_hash, right_hash) = join(
+        || bao_blake2s_large_chunks_recurse(left, NotRoot),
+        || bao_blake2s_large_chunks_recurse(right, NotRoot),
+    );
+    parent_hash_blake2s(&left_hash, &right_hash, finalization)
+}
+
+pub fn bao_blake2s_large_chunks(input: &[u8]) -> blake2s_simd::Hash {
+    bao_blake2s_large_chunks_recurse(input, Root(input.len() as u64))
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Either {
     B(blake2b_simd::Hash),

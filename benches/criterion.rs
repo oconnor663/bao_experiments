@@ -79,6 +79,16 @@ fn bench_blake2b_large_chunks(c: &mut Criterion) {
     );
 }
 
+fn bench_blake2s_large_chunks(c: &mut Criterion) {
+    c.bench(
+        "throughput_benches",
+        Benchmark::new("bench_blake2s_large_chunks", |b| {
+            let input = vec![0xff; LENGTH];
+            b.iter(move || bao_blake2s_large_chunks(&input))
+        }).throughput(Throughput::Bytes(LENGTH as u32)),
+    );
+}
+
 // NOTE: This benchmark is slower than it should be, for lack of an SSE implementation of BLAKE2s.
 fn bench_blake2hybrid(c: &mut Criterion) {
     c.bench(
@@ -262,6 +272,7 @@ criterion_group!(
         bench_blake2b_4ary,
         bench_blake2b_4ary_parallel_parents,
         bench_blake2b_large_chunks,
+        bench_blake2s_large_chunks,
         bench_blake2hybrid,
         bench_blake2hybrid_parallel_parents,
 );

@@ -58,6 +58,12 @@ fn bench_blake2b_large_chunks(b: &mut Bencher) {
     b.iter(|| bao_blake2b_large_chunks(&input));
 }
 
+#[bench]
+fn bench_blake2s_large_chunks(b: &mut Bencher) {
+    let input = input(b, LENGTH);
+    b.iter(|| bao_blake2s_large_chunks(&input));
+}
+
 // NOTE: This benchmark is slower than it should be, for lack of an SSE implementation of BLAKE2s.
 #[bench]
 fn bench_blake2hybrid(b: &mut Bencher) {
