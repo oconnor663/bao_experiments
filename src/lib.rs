@@ -62,12 +62,24 @@ fn common_params_blake2b() -> blake2b_simd::Params {
     params
 }
 
+fn chunk_params_blake2b() -> blake2b_simd::Params {
+    let mut params = common_params_blake2b();
+    params.node_depth(0);
+    params
+}
+
+fn parent_params_blake2b() -> blake2b_simd::Params {
+    let mut params = common_params_blake2b();
+    params.node_depth(1);
+    params
+}
+
 fn new_chunk_state_blake2b() -> blake2b_simd::State {
-    common_params_blake2b().node_depth(0).to_state()
+    chunk_params_blake2b().to_state()
 }
 
 fn new_parent_state_blake2b() -> blake2b_simd::State {
-    common_params_blake2b().node_depth(1).to_state()
+    parent_params_blake2b().to_state()
 }
 
 fn finalize_hash_blake2b(
@@ -93,12 +105,24 @@ fn common_params_blake2s() -> blake2s_simd::Params {
     params
 }
 
+fn chunk_params_blake2s() -> blake2s_simd::Params {
+    let mut params = common_params_blake2s();
+    params.node_depth(0);
+    params
+}
+
+fn parent_params_blake2s() -> blake2s_simd::Params {
+    let mut params = common_params_blake2s();
+    params.node_depth(1);
+    params
+}
+
 fn new_chunk_state_blake2s() -> blake2s_simd::State {
-    common_params_blake2s().node_depth(0).to_state()
+    chunk_params_blake2s().to_state()
 }
 
 fn new_parent_state_blake2s() -> blake2s_simd::State {
-    common_params_blake2s().node_depth(1).to_state()
+    parent_params_blake2s().to_state()
 }
 
 fn finalize_hash_blake2s(
@@ -154,21 +178,8 @@ fn hash_four_chunk_subtree_blake2b(
     finalization: Finalization,
 ) -> blake2b_simd::Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let mut state0 = new_chunk_state_blake2b();
-    let mut state1 = new_chunk_state_blake2b();
-    let mut state2 = new_chunk_state_blake2b();
-    let mut state3 = new_chunk_state_blake2b();
-    blake2b_simd::update4(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        chunk0,
-        chunk1,
-        chunk2,
-        chunk3,
-    );
-    let chunk_hashes = blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
+    let chunk_hashes =
+        blake2b_simd::hash4_exact(&chunk_params_blake2b(), chunk0, chunk1, chunk2, chunk3);
     let left_hash = parent_hash_blake2b(&chunk_hashes[0], &chunk_hashes[1], NotRoot);
     let right_hash = parent_hash_blake2b(&chunk_hashes[2], &chunk_hashes[3], NotRoot);
     parent_hash_blake2b(&left_hash, &right_hash, finalization)
@@ -186,23 +197,8 @@ fn hash_eight_chunk_subtree_blake2s(
     finalization: Finalization,
 ) -> blake2s_simd::Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let mut state0 = new_chunk_state_blake2s();
-    let mut state1 = new_chunk_state_blake2s();
-    let mut state2 = new_chunk_state_blake2s();
-    let mut state3 = new_chunk_state_blake2s();
-    let mut state4 = new_chunk_state_blake2s();
-    let mut state5 = new_chunk_state_blake2s();
-    let mut state6 = new_chunk_state_blake2s();
-    let mut state7 = new_chunk_state_blake2s();
-    blake2s_simd::update8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
+    let chunk_hashes = blake2s_simd::hash8_exact(
+        &chunk_params_blake2s(),
         chunk0,
         chunk1,
         chunk2,
@@ -211,16 +207,6 @@ fn hash_eight_chunk_subtree_blake2s(
         chunk5,
         chunk6,
         chunk7,
-    );
-    let chunk_hashes = blake2s_simd::finalize8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
     );
 
     let double0 = parent_hash_blake2s(&chunk_hashes[0], &chunk_hashes[1], NotRoot);
@@ -318,21 +304,8 @@ fn hash_four_chunk_4ary_subtree_blake2b(
     finalization: Finalization,
 ) -> blake2b_simd::Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let mut state0 = new_chunk_state_blake2b();
-    let mut state1 = new_chunk_state_blake2b();
-    let mut state2 = new_chunk_state_blake2b();
-    let mut state3 = new_chunk_state_blake2b();
-    blake2b_simd::update4(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        chunk0,
-        chunk1,
-        chunk2,
-        chunk3,
-    );
-    let chunk_hashes = blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
+    let chunk_hashes =
+        blake2b_simd::hash4_exact(&chunk_params_blake2b(), chunk0, chunk1, chunk2, chunk3);
     four_ary_parent_hash_blake2b(
         &chunk_hashes[0],
         &chunk_hashes[1],
@@ -389,27 +362,21 @@ fn bao_standard_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
     assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
 
     if input.len() == 4 * CHUNK_SIZE {
-        let mut state0 = new_chunk_state_blake2b();
-        let mut state1 = new_chunk_state_blake2b();
-        let mut state2 = new_chunk_state_blake2b();
-        let mut state3 = new_chunk_state_blake2b();
-        blake2b_simd::update4(
-            &mut state0,
-            &mut state1,
-            &mut state2,
-            &mut state3,
+        return blake2b_simd::hash4_exact(
+            &chunk_params_blake2b(),
             &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
         );
-        return blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
     }
 
     let (left_children, right_children) = join(
         || bao_standard_parallel_parents_recurse(&input[..input.len() / 2]),
         || bao_standard_parallel_parents_recurse(&input[input.len() / 2..]),
     );
+    // Note that we can't use hash4_exact here, though we could maybe invent another interface that
+    // doesn't assume exactness, and which pays the corresponding overhead.
     let mut state0 = new_parent_state_blake2b();
     let mut state1 = new_parent_state_blake2b();
     let mut state2 = new_parent_state_blake2b();
@@ -451,23 +418,8 @@ fn bao_blake2s_parallel_parents_recurse(input: &[u8]) -> [blake2s_simd::Hash; 8]
     assert_eq!(0, input.len() % (8 * CHUNK_SIZE));
 
     if input.len() == 8 * CHUNK_SIZE {
-        let mut state0 = new_chunk_state_blake2s();
-        let mut state1 = new_chunk_state_blake2s();
-        let mut state2 = new_chunk_state_blake2s();
-        let mut state3 = new_chunk_state_blake2s();
-        let mut state4 = new_chunk_state_blake2s();
-        let mut state5 = new_chunk_state_blake2s();
-        let mut state6 = new_chunk_state_blake2s();
-        let mut state7 = new_chunk_state_blake2s();
-        blake2s_simd::update8(
-            &mut state0,
-            &mut state1,
-            &mut state2,
-            &mut state3,
-            &mut state4,
-            &mut state5,
-            &mut state6,
-            &mut state7,
+        return blake2s_simd::hash8_exact(
+            &chunk_params_blake2s(),
             &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
@@ -477,75 +429,47 @@ fn bao_blake2s_parallel_parents_recurse(input: &[u8]) -> [blake2s_simd::Hash; 8]
             &input[6 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[7 * CHUNK_SIZE..][..CHUNK_SIZE],
         );
-        return blake2s_simd::finalize8(
-            &mut state0,
-            &mut state1,
-            &mut state2,
-            &mut state3,
-            &mut state4,
-            &mut state5,
-            &mut state6,
-            &mut state7,
-        );
     }
 
     let (left_children, right_children) = join(
         || bao_blake2s_parallel_parents_recurse(&input[..input.len() / 2]),
         || bao_blake2s_parallel_parents_recurse(&input[input.len() / 2..]),
     );
-    let mut state0 = new_parent_state_blake2s();
-    let mut state1 = new_parent_state_blake2s();
-    let mut state2 = new_parent_state_blake2s();
-    let mut state3 = new_parent_state_blake2s();
-    let mut state4 = new_parent_state_blake2s();
-    let mut state5 = new_parent_state_blake2s();
-    let mut state6 = new_parent_state_blake2s();
-    let mut state7 = new_parent_state_blake2s();
-    blake2s_simd::update8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
-        &left_children[0].as_bytes(),
-        &left_children[2].as_bytes(),
-        &left_children[4].as_bytes(),
-        &left_children[6].as_bytes(),
-        &right_children[0].as_bytes(),
-        &right_children[2].as_bytes(),
-        &right_children[4].as_bytes(),
-        &right_children[6].as_bytes(),
-    );
-    blake2s_simd::update8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
-        &left_children[1].as_bytes(),
-        &left_children[3].as_bytes(),
-        &left_children[5].as_bytes(),
-        &left_children[7].as_bytes(),
-        &right_children[1].as_bytes(),
-        &right_children[3].as_bytes(),
-        &right_children[5].as_bytes(),
-        &right_children[7].as_bytes(),
-    );
-    blake2s_simd::finalize8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
+
+    let mut parent0 = [0; 2 * HASH_SIZE];
+    parent0[..HASH_SIZE].copy_from_slice(left_children[0].as_bytes());
+    parent0[HASH_SIZE..].copy_from_slice(left_children[1].as_bytes());
+    let mut parent1 = [0; 2 * HASH_SIZE];
+    parent1[..HASH_SIZE].copy_from_slice(left_children[2].as_bytes());
+    parent1[HASH_SIZE..].copy_from_slice(left_children[3].as_bytes());
+    let mut parent2 = [0; 2 * HASH_SIZE];
+    parent2[..HASH_SIZE].copy_from_slice(left_children[4].as_bytes());
+    parent2[HASH_SIZE..].copy_from_slice(left_children[5].as_bytes());
+    let mut parent3 = [0; 2 * HASH_SIZE];
+    parent3[..HASH_SIZE].copy_from_slice(left_children[6].as_bytes());
+    parent3[HASH_SIZE..].copy_from_slice(left_children[7].as_bytes());
+    let mut parent4 = [0; 2 * HASH_SIZE];
+    parent4[..HASH_SIZE].copy_from_slice(right_children[0].as_bytes());
+    parent4[HASH_SIZE..].copy_from_slice(right_children[1].as_bytes());
+    let mut parent5 = [0; 2 * HASH_SIZE];
+    parent5[..HASH_SIZE].copy_from_slice(right_children[2].as_bytes());
+    parent5[HASH_SIZE..].copy_from_slice(right_children[3].as_bytes());
+    let mut parent6 = [0; 2 * HASH_SIZE];
+    parent6[..HASH_SIZE].copy_from_slice(right_children[4].as_bytes());
+    parent6[HASH_SIZE..].copy_from_slice(right_children[5].as_bytes());
+    let mut parent7 = [0; 2 * HASH_SIZE];
+    parent7[..HASH_SIZE].copy_from_slice(right_children[6].as_bytes());
+    parent7[HASH_SIZE..].copy_from_slice(right_children[7].as_bytes());
+    blake2s_simd::hash8_exact(
+        &parent_params_blake2s(),
+        &parent0,
+        &parent1,
+        &parent2,
+        &parent3,
+        &parent4,
+        &parent5,
+        &parent6,
+        &parent7,
     )
 }
 
@@ -567,21 +491,13 @@ pub fn bao_4ary_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
     assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
 
     if input.len() == 4 * CHUNK_SIZE {
-        let mut state0 = new_chunk_state_blake2b();
-        let mut state1 = new_chunk_state_blake2b();
-        let mut state2 = new_chunk_state_blake2b();
-        let mut state3 = new_chunk_state_blake2b();
-        blake2b_simd::update4(
-            &mut state0,
-            &mut state1,
-            &mut state2,
-            &mut state3,
+        return blake2b_simd::hash4_exact(
+            &chunk_params_blake2b(),
             &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
             &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
         );
-        return blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3);
     }
 
     let quarter = input.len() / 4;
@@ -600,23 +516,33 @@ pub fn bao_4ary_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
         },
     );
 
-    let mut state0 = new_parent_state_blake2b();
-    let mut state1 = new_parent_state_blake2b();
-    let mut state2 = new_parent_state_blake2b();
-    let mut state3 = new_parent_state_blake2b();
-    for i in 0..4 {
-        blake2b_simd::update4(
-            &mut state0,
-            &mut state1,
-            &mut state2,
-            &mut state3,
-            &children0[i].as_bytes(),
-            &children1[i].as_bytes(),
-            &children2[i].as_bytes(),
-            &children3[i].as_bytes(),
-        );
-    }
-    blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3)
+    let mut parent0 = [0; 4 * HASH_SIZE];
+    parent0[0 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children0[0].as_bytes());
+    parent0[1 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children0[1].as_bytes());
+    parent0[2 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children0[2].as_bytes());
+    parent0[3 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children0[3].as_bytes());
+    let mut parent1 = [0; 4 * HASH_SIZE];
+    parent1[0 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children1[0].as_bytes());
+    parent1[1 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children1[1].as_bytes());
+    parent1[2 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children1[2].as_bytes());
+    parent1[3 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children1[3].as_bytes());
+    let mut parent2 = [0; 4 * HASH_SIZE];
+    parent2[0 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children2[0].as_bytes());
+    parent2[1 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children2[1].as_bytes());
+    parent2[2 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children2[2].as_bytes());
+    parent2[3 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children2[3].as_bytes());
+    let mut parent3 = [0; 4 * HASH_SIZE];
+    parent3[0 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children3[0].as_bytes());
+    parent3[1 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children3[1].as_bytes());
+    parent3[2 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children3[2].as_bytes());
+    parent3[3 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children3[3].as_bytes());
+    blake2b_simd::hash4_exact(
+        &parent_params_blake2b(),
+        &parent0,
+        &parent1,
+        &parent2,
+        &parent3,
+    )
 }
 
 pub fn bao_4ary_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
@@ -680,21 +606,9 @@ impl Either {
 }
 
 fn hash_4_chunks_either(chunk0: &[u8], chunk1: &[u8], chunk2: &[u8], chunk3: &[u8]) -> [Either; 4] {
-    let mut state0 = new_chunk_state_blake2b();
-    let mut state1 = new_chunk_state_blake2b();
-    let mut state2 = new_chunk_state_blake2b();
-    let mut state3 = new_chunk_state_blake2b();
-    blake2b_simd::update4(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        chunk0,
-        chunk1,
-        chunk2,
-        chunk3,
-    );
-    match blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3) {
+    let chunk_hashes =
+        blake2b_simd::hash4_exact(&chunk_params_blake2b(), chunk0, chunk1, chunk2, chunk3);
+    match chunk_hashes {
         [h0, h1, h2, h3] => [B(h0), B(h1), B(h2), B(h3)],
     }
 }
@@ -760,64 +674,46 @@ pub fn bao_blake2hybrid_parallel_parents_recurse(input: &[u8]) -> [Either; 8] {
         }
     }
 
-    let (children0, children1) = join(
+    let (left_children, right_children) = join(
         || bao_blake2hybrid_parallel_parents_recurse(&input[..input.len() / 2]),
         || bao_blake2hybrid_parallel_parents_recurse(&input[input.len() / 2..]),
     );
-    let mut state0 = new_parent_state_blake2s();
-    let mut state1 = new_parent_state_blake2s();
-    let mut state2 = new_parent_state_blake2s();
-    let mut state3 = new_parent_state_blake2s();
-    let mut state4 = new_parent_state_blake2s();
-    let mut state5 = new_parent_state_blake2s();
-    let mut state6 = new_parent_state_blake2s();
-    let mut state7 = new_parent_state_blake2s();
-    blake2s_simd::update8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
-        children0[0].as_bytes(),
-        children0[2].as_bytes(),
-        children0[4].as_bytes(),
-        children0[6].as_bytes(),
-        children1[0].as_bytes(),
-        children1[2].as_bytes(),
-        children1[4].as_bytes(),
-        children1[6].as_bytes(),
+    let mut parent0 = [0; 2 * HASH_SIZE];
+    parent0[..HASH_SIZE].copy_from_slice(left_children[0].as_bytes());
+    parent0[HASH_SIZE..].copy_from_slice(left_children[1].as_bytes());
+    let mut parent1 = [0; 2 * HASH_SIZE];
+    parent1[..HASH_SIZE].copy_from_slice(left_children[2].as_bytes());
+    parent1[HASH_SIZE..].copy_from_slice(left_children[3].as_bytes());
+    let mut parent2 = [0; 2 * HASH_SIZE];
+    parent2[..HASH_SIZE].copy_from_slice(left_children[4].as_bytes());
+    parent2[HASH_SIZE..].copy_from_slice(left_children[5].as_bytes());
+    let mut parent3 = [0; 2 * HASH_SIZE];
+    parent3[..HASH_SIZE].copy_from_slice(left_children[6].as_bytes());
+    parent3[HASH_SIZE..].copy_from_slice(left_children[7].as_bytes());
+    let mut parent4 = [0; 2 * HASH_SIZE];
+    parent4[..HASH_SIZE].copy_from_slice(right_children[0].as_bytes());
+    parent4[HASH_SIZE..].copy_from_slice(right_children[1].as_bytes());
+    let mut parent5 = [0; 2 * HASH_SIZE];
+    parent5[..HASH_SIZE].copy_from_slice(right_children[2].as_bytes());
+    parent5[HASH_SIZE..].copy_from_slice(right_children[3].as_bytes());
+    let mut parent6 = [0; 2 * HASH_SIZE];
+    parent6[..HASH_SIZE].copy_from_slice(right_children[4].as_bytes());
+    parent6[HASH_SIZE..].copy_from_slice(right_children[5].as_bytes());
+    let mut parent7 = [0; 2 * HASH_SIZE];
+    parent7[..HASH_SIZE].copy_from_slice(right_children[6].as_bytes());
+    parent7[HASH_SIZE..].copy_from_slice(right_children[7].as_bytes());
+    let parents = blake2s_simd::hash8_exact(
+        &parent_params_blake2s(),
+        &parent0,
+        &parent1,
+        &parent2,
+        &parent3,
+        &parent4,
+        &parent5,
+        &parent6,
+        &parent7,
     );
-    blake2s_simd::update8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
-        children0[1].as_bytes(),
-        children0[3].as_bytes(),
-        children0[5].as_bytes(),
-        children0[7].as_bytes(),
-        children1[1].as_bytes(),
-        children1[3].as_bytes(),
-        children1[5].as_bytes(),
-        children1[7].as_bytes(),
-    );
-    match blake2s_simd::finalize8(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &mut state4,
-        &mut state5,
-        &mut state6,
-        &mut state7,
-    ) {
+    match parents {
         [h0, h1, h2, h3, h4, h5, h6, h7] => {
             [S(h0), S(h1), S(h2), S(h3), S(h4), S(h5), S(h6), S(h7)]
         }
