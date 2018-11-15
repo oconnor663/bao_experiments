@@ -117,7 +117,11 @@ fn bench_blake2hybrid_parallel_parents(c: &mut Criterion) {
     );
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_simple(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_simple", |b| {
@@ -140,7 +144,12 @@ fn bench_load_8_blake2s_blocks_simple(c: &mut Criterion) {
         }),
     );
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_interleave(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_interleave", |b| {
@@ -163,7 +172,12 @@ fn bench_load_8_blake2s_blocks_interleave(c: &mut Criterion) {
         }),
     );
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_gather(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_gather", |b| {
@@ -186,7 +200,12 @@ fn bench_load_8_blake2s_blocks_gather(c: &mut Criterion) {
         }),
     );
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_gather_inner(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_8_blake2s_blocks_gather_inner", |b| {
@@ -200,7 +219,11 @@ fn bench_load_8_blake2s_blocks_gather_inner(c: &mut Criterion) {
     );
 }
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_simple(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_simple", |b| {
@@ -218,7 +241,12 @@ fn bench_load_4_blake2b_blocks_simple(c: &mut Criterion) {
         }),
     );
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_interleave(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_interleave", |b| {
@@ -236,7 +264,12 @@ fn bench_load_4_blake2b_blocks_interleave(c: &mut Criterion) {
         }),
     );
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_gather(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_gather", |b| {
@@ -254,7 +287,12 @@ fn bench_load_4_blake2b_blocks_gather(c: &mut Criterion) {
         }),
     );
 }
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_gather_inner(c: &mut Criterion) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     c.bench(
         "loading_benches",
         Benchmark::new("bench_load_4_blake2b_blocks_gather_inner", |b| {
@@ -292,6 +330,7 @@ criterion_group!(
         bench_blake2hybrid_parallel_parents,
 );
 
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 criterion_group!(
     name = loading_benches;
     config = Criterion::default();
@@ -306,4 +345,8 @@ criterion_group!(
         bench_load_4_blake2b_blocks_gather_inner,
 );
 
+// The loading benches are only defined on x86.
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 criterion_main!(warmup_bench, throughput_benches, loading_benches);
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+criterion_main!(warmup_bench, throughput_benches);

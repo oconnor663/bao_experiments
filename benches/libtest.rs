@@ -85,7 +85,11 @@ fn bench_blake2hybrid_parallel_parents(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_simple(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let block0 = avx2_blake2s_load::random_block();
     let block1 = avx2_blake2s_load::random_block();
     let block2 = avx2_blake2s_load::random_block();
@@ -104,7 +108,11 @@ fn bench_load_8_blake2s_blocks_simple(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_interleave(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let block0 = avx2_blake2s_load::random_block();
     let block1 = avx2_blake2s_load::random_block();
     let block2 = avx2_blake2s_load::random_block();
@@ -123,7 +131,11 @@ fn bench_load_8_blake2s_blocks_interleave(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_gather(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let block0 = avx2_blake2s_load::random_block();
     let block1 = avx2_blake2s_load::random_block();
     let block2 = avx2_blake2s_load::random_block();
@@ -142,7 +154,11 @@ fn bench_load_8_blake2s_blocks_gather(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_8_blake2s_blocks_gather_inner(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let blocks = avx2_blake2s_load::random_8_blocks();
     let mut out = unsafe { mem::zeroed() };
     b.iter(|| unsafe {
@@ -152,7 +168,11 @@ fn bench_load_8_blake2s_blocks_gather_inner(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_simple(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let block0 = avx2_blake2b_load::random_block();
     let block1 = avx2_blake2b_load::random_block();
     let block2 = avx2_blake2b_load::random_block();
@@ -165,7 +185,11 @@ fn bench_load_4_blake2b_blocks_simple(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_interleave(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let block0 = avx2_blake2b_load::random_block();
     let block1 = avx2_blake2b_load::random_block();
     let block2 = avx2_blake2b_load::random_block();
@@ -178,7 +202,11 @@ fn bench_load_4_blake2b_blocks_interleave(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_gather(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let block0 = avx2_blake2b_load::random_block();
     let block1 = avx2_blake2b_load::random_block();
     let block2 = avx2_blake2b_load::random_block();
@@ -191,7 +219,11 @@ fn bench_load_4_blake2b_blocks_gather(b: &mut Bencher) {
 }
 
 #[bench]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 fn bench_load_4_blake2b_blocks_gather_inner(b: &mut Bencher) {
+    if !is_x86_feature_detected!("avx2") {
+        return;
+    }
     let blocks = avx2_blake2b_load::random_4_blocks();
     let mut out = unsafe { mem::zeroed() };
     b.iter(|| unsafe {
