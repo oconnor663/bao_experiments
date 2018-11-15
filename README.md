@@ -19,32 +19,34 @@ from run to run.
 
 Below are some preliminary numbers from my benchmark runs, arranged from
 fastest to slowest. Note that the Intel runs use long warmups, so these numbers
-are without Turbo Boost. Note also that we're not using a SIMD implementation
-of single-instance BLAKE2s yet, so the `BLAKE2s` and `BLAKE2hybrid` benchmarks
-on Intel will get faster.
+are without Turbo Boost.
 
 ```
 64-bit i5-8250U multithreaded (4/8 cores)
 -----------------------------------------
-BLAKE2b large chunks               5.2360 GiB/s
-BLAKE2b 4-ary                      5.0212 GiB/s
-BLAKE2b 4-ary parallel parents     4.9355 GiB/s
-BLAKE2b standard                   4.8290 GiB/s
-BLAKE2b standard parallel parents  4.7956 GiB/s
-BLAKE2hybrid parallel parents      4.7929 GiB/s
-BLAKE2hybrid                       4.7494 GiB/s
-BLAKE2s                            4.2716 GiB/s
+BLAKE2s large chunks               6.0138 GiB/s
+BLAKE2s parallel parents           5.6268 GiB/s
+BLAKE2b large chunks               5.5165 GiB/s
+BLAKE2b 4-ary parallel parents     5.4020 GiB/s
+BLAKE2b 4-ary                      5.3837 GiB/s
+BLAKE2hybrid parallel parents      5.3676 GiB/s
+BLAKE2s                            5.3216 GiB/s
+BLAKE2b standard                   5.1867 GiB/s
+BLAKE2b standard parallel parents  5.1051 GiB/s
+BLAKE2hybrid                       5.0448 GiB/s
 
 64-bit i5-8250U singlethreaded
 -----------------------------------------
-BLAKE2b large chunks               1.7752 GiB/s
-BLAKE2hybrid parallel parents      1.7181 GiB/s
-BLAKE2b 4-ary parallel parents     1.6935 GiB/s
-BLAKE2b 4-ary                      1.6804 GiB/s
-BLAKE2hybrid                       1.6661 GiB/s
-BLAKE2b standard                   1.5988 GiB/s
-BLAKE2s                            1.4944 GiB/s
-BLAKE2b standard parallel parents  1.4826 GiB/s
+BLAKE2s large chunks               2.2979 GiB/s
+BLAKE2s parallel parents           2.1907 GiB/s
+BLAKE2s                            2.0264 GiB/s
+BLAKE2b 4-ary parallel parents     1.9443 GiB/s
+BLAKE2b 4-ary                      1.9138 GiB/s
+BLAKE2b large chunks               1.9076 GiB/s
+BLAKE2hybrid parallel parents      1.8033 GiB/s
+BLAKE2hybrid                       1.7186 GiB/s
+BLAKE2b standard parallel parents  1.7079 GiB/s
+BLAKE2b standard                   1.6142 GiB/s
 
 32-bit ARM v7l multithreaded (4 cores)
 -------------------------------
