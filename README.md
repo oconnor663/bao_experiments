@@ -18,58 +18,69 @@ said, even the criterion benchmarks seem to have as much as 10% variance
 from run to run.
 
 Below are some preliminary numbers from my benchmark runs, arranged from
-fastest to slowest. These numbers are the median of three runs. Note
-that the Intel numbers are with Turbo Boost turned off. If Turbo Boost
-is turned on, the single threaded figures on my laptop are about twice
-as high, even for long runs with a hot CPU. The boost for multithreaded
-benchmarks is smaller, about 33%.
+fastest to slowest. The Intel numbers show more variance than the ARM
+ones, any they're given as the median of three runs. Note that the Intel
+numbers are with Turbo Boost turned off. If Turbo Boost is turned on,
+the single threaded figures on my laptop are about twice as high, even
+for long runs with a hot CPU. The boost for multithreaded benchmarks is
+smaller, about 33%.
+
+Note also that an ARM NEON implementation of BLAKE2b is blocked waiting
+for Rust to [support the full set of ARM
+intrinsics](https://github.com/rust-lang-nursery/stdsimd/issues/148).
+NEON will help BLAKE2b substantially, though it [might not help
+BLAKE2s](https://github.com/BLAKE2/BLAKE2/commit/7965d3e6e1b4193438b8d3a656787587d2579227).
 
 ```
 64-bit i5-8250U multithreaded (4/8 cores) Turbo-Boost-disabled
 --------------------------------------------------------------
-BLAKE2s large chunks               4.51   GiB/s
-BLAKE2s parallel parents           4.34   GiB/s
-BLAKE2b large chunks               4.06   GiB/s
-BLAKE2b 4-ary parallel parents     4.03   GiB/s
-BLAKE2s                            4.03   GiB/s
-BLAKE2b 4-ary                      4.00   GiB/s
-BLAKE2hybrid parallel parents      3.98   GiB/s
-BLAKE2b standard                   3.81   GiB/s
-BLAKE2hybrid                       3.75   GiB/s
-BLAKE2b standard parallel parents  3.71   GiB/s
+BLAKE2s large chunks               4.51 GiB/s
+BLAKE2s parallel parents           4.34
+BLAKE2b large chunks               4.06
+BLAKE2b 4-ary parallel parents     4.03
+BLAKE2s                            4.03
+BLAKE2b 4-ary                      4.00
+BLAKE2hybrid parallel parents      3.98
+BLAKE2b standard                   3.81
+BLAKE2hybrid                       3.75
+BLAKE2b standard parallel parents  3.71
 
 64-bit i5-8250U singlethreaded Turbo-Boost-disabled
 ---------------------------------------------------
-BLAKE2s large chunks               1.06   GiB/s
-BLAKE2s parallel parents           1.03   GiB/s
-BLAKE2b large chunks               0.98   GiB/s
-BLAKE2s                            0.97   GiB/s
-BLAKE2hybrid parallel parents      0.93   GiB/s
-BLAKE2b 4-ary parallel parents     0.90   GiB/s
-BLAKE2b standard parallel parents  0.90   GiB/s
-BLAKE2hybrid                       0.89   GiB/s
-BLAKE2b standard                   0.88   GiB/s
-BLAKE2b 4-ary                      0.88   GiB/s
+BLAKE2s large chunks               1.06 GiB/s
+BLAKE2s parallel parents           1.03
+BLAKE2b large chunks               0.98
+BLAKE2s                            0.97
+BLAKE2hybrid parallel parents      0.93
+BLAKE2b 4-ary parallel parents     0.90
+BLAKE2b standard parallel parents  0.90
+BLAKE2hybrid                       0.89
+BLAKE2b standard                   0.88
+BLAKE2b 4-ary                      0.88
 
 32-bit ARM v7l multithreaded (4 cores)
 --------------------------------------
-BLAKE2s                            244 MB/s
-BLAKE2b 4-ary                      132 MB/s
-BLAKE2b standard                   130 MB/s
-BLAKE2b 4-ary parallel parents     120 MB/s
-BLAKE2hybrid                       116 MB/s
-BLAKE2b standard parallel parents  106 MB/s
-BLAKE2b large chunks                92 MB/s
-BLAKE2hybrid parallel parents       86 MB/s
+BLAKE2s                            262 MB/s
+BLAKE2s parallel parents           262
+BLAKE2s large chunks               253
+BLAKE2b large chunks               137
+BLAKE2b 4-ary                      133
+BLAKE2b 4-ary parallel parents     133
+BLAKE2hybrid parallel parents      130
+BLAKE2b standard                   130
+BLAKE2b standard parallel parents  129
+BLAKE2hybrid                       129
 
 32-bit ARM v7l singlethreaded
 -----------------------------
-BLAKE2s                            65 MB/s
-BLAKE2b large chunks               36 MB/s
-BLAKE2b 4-ary parallel parents     35 MB/s
-BLAKE2b 4-ary                      34 MB/s
-BLAKE2b standard                   34 MB/s
-BLAKE2b standard parallel parents  34 MB/s
-BLAKE2hybrid parallel parents      34 MB/s
-BLAKE2hybrid                       33 MB/s
+BLAKE2s large chunks               69 MB/s
+BLAKE2s parallel parents           67
+BLAKE2s                            67
+BLAKE2b large chunks               36
+BLAKE2b 4-ary                      35
+BLAKE2b 4-ary parallel parents     35
+BLAKE2hybrid parallel parents      34
+BLAKE2b standard                   34
+BLAKE2b standard parallel parents  34
+BLAKE2hybrid                       34
 ```
