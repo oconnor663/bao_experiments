@@ -18,38 +18,41 @@ said, even the criterion benchmarks seem to have as much as 10% variance
 from run to run.
 
 Below are some preliminary numbers from my benchmark runs, arranged from
-fastest to slowest. Note that the Intel runs use long warmups, so these numbers
-are without Turbo Boost.
+fastest to slowest. These numbers are the median of three runs. Note
+that the Intel numbers are with Turbo Boost turned off. If Turbo Boost
+is turned on, the single threaded figures on my laptop are about twice
+as high, even for long runs with a hot CPU. The boost for multithreaded
+benchmarks is smaller, about 33%.
 
 ```
-64-bit i5-8250U multithreaded (4/8 cores)
------------------------------------------
-BLAKE2s large chunks               6.0138 GiB/s
-BLAKE2s parallel parents           5.6268 GiB/s
-BLAKE2b large chunks               5.5165 GiB/s
-BLAKE2b 4-ary parallel parents     5.4020 GiB/s
-BLAKE2b 4-ary                      5.3837 GiB/s
-BLAKE2hybrid parallel parents      5.3676 GiB/s
-BLAKE2s                            5.3216 GiB/s
-BLAKE2b standard                   5.1867 GiB/s
-BLAKE2b standard parallel parents  5.1051 GiB/s
-BLAKE2hybrid                       5.0448 GiB/s
+64-bit i5-8250U multithreaded (4/8 cores) Turbo-Boost-disabled
+--------------------------------------------------------------
+BLAKE2s large chunks               4.51   GiB/s
+BLAKE2s parallel parents           4.34   GiB/s
+BLAKE2b large chunks               4.06   GiB/s
+BLAKE2b 4-ary parallel parents     4.03   GiB/s
+BLAKE2s                            4.03   GiB/s
+BLAKE2b 4-ary                      4.00   GiB/s
+BLAKE2hybrid parallel parents      3.98   GiB/s
+BLAKE2b standard                   3.81   GiB/s
+BLAKE2hybrid                       3.75   GiB/s
+BLAKE2b standard parallel parents  3.71   GiB/s
 
-64-bit i5-8250U singlethreaded
------------------------------------------
-BLAKE2s large chunks               2.2979 GiB/s
-BLAKE2s parallel parents           2.1907 GiB/s
-BLAKE2s                            2.0264 GiB/s
-BLAKE2b 4-ary parallel parents     1.9443 GiB/s
-BLAKE2b 4-ary                      1.9138 GiB/s
-BLAKE2b large chunks               1.9076 GiB/s
-BLAKE2hybrid parallel parents      1.8033 GiB/s
-BLAKE2hybrid                       1.7186 GiB/s
-BLAKE2b standard parallel parents  1.7079 GiB/s
-BLAKE2b standard                   1.6142 GiB/s
+64-bit i5-8250U singlethreaded Turbo-Boost-disabled
+---------------------------------------------------
+BLAKE2s large chunks               1.06   GiB/s
+BLAKE2s parallel parents           1.03   GiB/s
+BLAKE2b large chunks               0.98   GiB/s
+BLAKE2s                            0.97   GiB/s
+BLAKE2hybrid parallel parents      0.93   GiB/s
+BLAKE2b 4-ary parallel parents     0.90   GiB/s
+BLAKE2b standard parallel parents  0.90   GiB/s
+BLAKE2hybrid                       0.89   GiB/s
+BLAKE2b standard                   0.88   GiB/s
+BLAKE2b 4-ary                      0.88   GiB/s
 
 32-bit ARM v7l multithreaded (4 cores)
--------------------------------
+--------------------------------------
 BLAKE2s                            244 MB/s
 BLAKE2b 4-ary                      132 MB/s
 BLAKE2b standard                   130 MB/s
