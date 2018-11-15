@@ -13,6 +13,13 @@ fn bench_blake2b_standard(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
         Benchmark::new("bench_blake2b_standard", |b| {
+            // TRICKY BENCHMARKING DETAIL! It's important to avoid using all-zero memory as input:
+            // - The allocator might return uninitialized pages, which get zeroed lazily when
+            //   they're read. In that case, the first iteration pays the cost of initializnig the
+            //   memory, which makes your throughput lower and less consistent.
+            // - For some reason I don't understand, benchmarks on a giant 48-physical-core AWS
+            //   machine are 20% *faster* when the input is all-zeros. There might be some other
+            //   effect that comes into play with the gigantic inputs we use in those benchmarks.
             let input = vec![0xff; LENGTH];
             b.iter(move || bao_standard(&input))
         }).throughput(Throughput::Bytes(LENGTH as u32)),

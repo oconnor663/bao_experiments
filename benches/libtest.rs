@@ -13,6 +13,13 @@ const LENGTH: usize = 1 << 24; // about 17 MB
 
 fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
     b.bytes = size as u64;
+    // TRICKY BENCHMARKING DETAIL! It's important to avoid using all-zero memory as input:
+    // - The allocator might return uninitialized pages, which get zeroed lazily when they're read.
+    //   In that case, the first iteration pays the cost of initializnig the memory, which makes
+    //   your throughput lower and less consistent.
+    // - For some reason I don't understand, benchmarks on a giant 48-physical-core AWS machine are
+    //   20% *faster* when the input is all-zeros. There might be some other effect that comes into
+    //   play with the gigantic inputs we use in those benchmarks.
     vec![0xff; size]
 }
 
