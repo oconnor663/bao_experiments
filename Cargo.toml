@@ -5,8 +5,8 @@ authors = ["Jack O'Connor <oconnor663@gmail.com>"]
 
 [dependencies]
 arrayref = "0.3.4"
-blake2b_simd = { git = "https://github.com/oconnor663/blake2b_simd" }
-blake2s_simd = { git = "https://github.com/oconnor663/blake2s_simd" }
+blake2b_simd = { git = "https://github.com/oconnor663/blake2b_simd", rev = "ba494d8ded588b932be41f9bdadeee237beea182" }
+blake2s_simd = { git = "https://github.com/oconnor663/blake2s_simd", rev = "c74856b7db5fb873196866b0739615dc333a6396" }
 byteorder = { version = "1.2.4", default-features = false }
 rayon = { version = "1.0.2" }
 rand = "0.5.5"
