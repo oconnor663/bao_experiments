@@ -180,10 +180,16 @@ fn hash_four_chunk_subtree_blake2b(
     finalization: Finalization,
 ) -> blake2b_simd::Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let chunk_hashes =
-        blake2b_simd::hash4_exact(&chunk_params_blake2b(), chunk0, chunk1, chunk2, chunk3);
-    let left_hash = parent_hash_blake2b(&chunk_hashes[0], &chunk_hashes[1], NotRoot);
-    let right_hash = parent_hash_blake2b(&chunk_hashes[2], &chunk_hashes[3], NotRoot);
+    let params = chunk_params_blake2b();
+    let mut jobs = [
+        blake2b_simd::many::HashManyJob::new(&params, chunk0),
+        blake2b_simd::many::HashManyJob::new(&params, chunk1),
+        blake2b_simd::many::HashManyJob::new(&params, chunk2),
+        blake2b_simd::many::HashManyJob::new(&params, chunk3),
+    ];
+    blake2b_simd::many::hash_many(jobs.iter_mut());
+    let left_hash = parent_hash_blake2b(&jobs[0].to_hash(), &jobs[1].to_hash(), NotRoot);
+    let right_hash = parent_hash_blake2b(&jobs[2].to_hash(), &jobs[3].to_hash(), NotRoot);
     parent_hash_blake2b(&left_hash, &right_hash, finalization)
 }
 
@@ -199,22 +205,23 @@ fn hash_eight_chunk_subtree_blake2s(
     finalization: Finalization,
 ) -> blake2s_simd::Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let chunk_hashes = blake2s_simd::hash8_exact(
-        &chunk_params_blake2s(),
-        chunk0,
-        chunk1,
-        chunk2,
-        chunk3,
-        chunk4,
-        chunk5,
-        chunk6,
-        chunk7,
-    );
+    let params = chunk_params_blake2s();
+    let mut jobs = [
+        blake2s_simd::many::HashManyJob::new(&params, chunk0),
+        blake2s_simd::many::HashManyJob::new(&params, chunk1),
+        blake2s_simd::many::HashManyJob::new(&params, chunk2),
+        blake2s_simd::many::HashManyJob::new(&params, chunk3),
+        blake2s_simd::many::HashManyJob::new(&params, chunk4),
+        blake2s_simd::many::HashManyJob::new(&params, chunk5),
+        blake2s_simd::many::HashManyJob::new(&params, chunk6),
+        blake2s_simd::many::HashManyJob::new(&params, chunk7),
+    ];
+    blake2s_simd::many::hash_many(jobs.iter_mut());
 
-    let double0 = parent_hash_blake2s(&chunk_hashes[0], &chunk_hashes[1], NotRoot);
-    let double1 = parent_hash_blake2s(&chunk_hashes[2], &chunk_hashes[3], NotRoot);
-    let double2 = parent_hash_blake2s(&chunk_hashes[4], &chunk_hashes[5], NotRoot);
-    let double3 = parent_hash_blake2s(&chunk_hashes[6], &chunk_hashes[7], NotRoot);
+    let double0 = parent_hash_blake2s(&jobs[0].to_hash(), &jobs[1].to_hash(), NotRoot);
+    let double1 = parent_hash_blake2s(&jobs[2].to_hash(), &jobs[3].to_hash(), NotRoot);
+    let double2 = parent_hash_blake2s(&jobs[4].to_hash(), &jobs[5].to_hash(), NotRoot);
+    let double3 = parent_hash_blake2s(&jobs[6].to_hash(), &jobs[7].to_hash(), NotRoot);
 
     let quad0 = parent_hash_blake2s(&double0, &double1, NotRoot);
     let quad1 = parent_hash_blake2s(&double2, &double3, NotRoot);
@@ -306,13 +313,19 @@ fn hash_four_chunk_4ary_subtree_blake2b(
     finalization: Finalization,
 ) -> blake2b_simd::Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let chunk_hashes =
-        blake2b_simd::hash4_exact(&chunk_params_blake2b(), chunk0, chunk1, chunk2, chunk3);
+    let params = chunk_params_blake2b();
+    let mut jobs = [
+        blake2b_simd::many::HashManyJob::new(&params, chunk0),
+        blake2b_simd::many::HashManyJob::new(&params, chunk1),
+        blake2b_simd::many::HashManyJob::new(&params, chunk2),
+        blake2b_simd::many::HashManyJob::new(&params, chunk3),
+    ];
+    blake2b_simd::many::hash_many(jobs.iter_mut());
     four_ary_parent_hash_blake2b(
-        &chunk_hashes[0],
-        &chunk_hashes[1],
-        &chunk_hashes[2],
-        &chunk_hashes[3],
+        &jobs[0].to_hash(),
+        &jobs[1].to_hash(),
+        &jobs[2].to_hash(),
+        &jobs[3].to_hash(),
         finalization,
     )
 }
@@ -364,13 +377,20 @@ fn bao_standard_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
     assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
 
     if input.len() == 4 * CHUNK_SIZE {
-        return blake2b_simd::hash4_exact(
-            &chunk_params_blake2b(),
-            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
-        );
+        let params = chunk_params_blake2b();
+        let mut jobs = [
+            blake2b_simd::many::HashManyJob::new(&params, &input[0 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2b_simd::many::HashManyJob::new(&params, &input[1 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2b_simd::many::HashManyJob::new(&params, &input[2 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2b_simd::many::HashManyJob::new(&params, &input[3 * CHUNK_SIZE..][..CHUNK_SIZE]),
+        ];
+        blake2b_simd::many::hash_many(jobs.iter_mut());
+        return [
+            jobs[0].to_hash(),
+            jobs[1].to_hash(),
+            jobs[2].to_hash(),
+            jobs[3].to_hash(),
+        ];
     }
 
     let (left_children, right_children) = join(
@@ -379,31 +399,33 @@ fn bao_standard_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
     );
     // Note that we can't use hash4_exact here, though we could maybe invent another interface that
     // doesn't assume exactness, and which pays the corresponding overhead.
-    let mut state0 = new_parent_state_blake2b();
-    let mut state1 = new_parent_state_blake2b();
-    let mut state2 = new_parent_state_blake2b();
-    let mut state3 = new_parent_state_blake2b();
-    blake2b_simd::update4(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &left_children[0].as_bytes(),
-        &left_children[2].as_bytes(),
-        &right_children[0].as_bytes(),
-        &right_children[2].as_bytes(),
-    );
-    blake2b_simd::update4(
-        &mut state0,
-        &mut state1,
-        &mut state2,
-        &mut state3,
-        &left_children[1].as_bytes(),
-        &left_children[3].as_bytes(),
-        &right_children[1].as_bytes(),
-        &right_children[3].as_bytes(),
-    );
-    blake2b_simd::finalize4(&mut state0, &mut state1, &mut state2, &mut state3)
+    let mut input0 = [0; 2 * HASH_SIZE];
+    input0[..HASH_SIZE].copy_from_slice(left_children[0].as_bytes());
+    input0[HASH_SIZE..].copy_from_slice(left_children[1].as_bytes());
+    let mut input1 = [0; 2 * HASH_SIZE];
+    input1[..HASH_SIZE].copy_from_slice(left_children[2].as_bytes());
+    input1[HASH_SIZE..].copy_from_slice(left_children[3].as_bytes());
+    let mut input2 = [0; 2 * HASH_SIZE];
+    input2[..HASH_SIZE].copy_from_slice(right_children[0].as_bytes());
+    input2[HASH_SIZE..].copy_from_slice(right_children[1].as_bytes());
+    let mut input3 = [0; 2 * HASH_SIZE];
+    input3[..HASH_SIZE].copy_from_slice(right_children[2].as_bytes());
+    input3[HASH_SIZE..].copy_from_slice(right_children[3].as_bytes());
+
+    let params = parent_params_blake2b();
+    let mut jobs = [
+        blake2b_simd::many::HashManyJob::new(&params, &input0),
+        blake2b_simd::many::HashManyJob::new(&params, &input1),
+        blake2b_simd::many::HashManyJob::new(&params, &input2),
+        blake2b_simd::many::HashManyJob::new(&params, &input3),
+    ];
+    blake2b_simd::many::hash_many(jobs.iter_mut());
+    [
+        jobs[0].to_hash(),
+        jobs[1].to_hash(),
+        jobs[2].to_hash(),
+        jobs[3].to_hash(),
+    ]
 }
 
 pub fn bao_standard_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
@@ -420,59 +442,83 @@ fn bao_blake2s_parallel_parents_recurse(input: &[u8]) -> [blake2s_simd::Hash; 8]
     assert_eq!(0, input.len() % (8 * CHUNK_SIZE));
 
     if input.len() == 8 * CHUNK_SIZE {
-        return blake2s_simd::hash8_exact(
-            &chunk_params_blake2s(),
-            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[4 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[5 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[6 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[7 * CHUNK_SIZE..][..CHUNK_SIZE],
-        );
+        let params = chunk_params_blake2s();
+        let mut jobs = [
+            blake2s_simd::many::HashManyJob::new(&params, &input[0 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2s_simd::many::HashManyJob::new(&params, &input[1 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2s_simd::many::HashManyJob::new(&params, &input[2 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2s_simd::many::HashManyJob::new(&params, &input[3 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2s_simd::many::HashManyJob::new(&params, &input[4 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2s_simd::many::HashManyJob::new(&params, &input[5 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2s_simd::many::HashManyJob::new(&params, &input[6 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2s_simd::many::HashManyJob::new(&params, &input[7 * CHUNK_SIZE..][..CHUNK_SIZE]),
+        ];
+        blake2s_simd::many::hash_many(jobs.iter_mut());
+        return [
+            jobs[0].to_hash(),
+            jobs[1].to_hash(),
+            jobs[2].to_hash(),
+            jobs[3].to_hash(),
+            jobs[4].to_hash(),
+            jobs[5].to_hash(),
+            jobs[6].to_hash(),
+            jobs[7].to_hash(),
+        ];
     }
 
     let (left_children, right_children) = join(
         || bao_blake2s_parallel_parents_recurse(&input[..input.len() / 2]),
         || bao_blake2s_parallel_parents_recurse(&input[input.len() / 2..]),
     );
+    // Note that we can't use hash4_exact here, though we could maybe invent another interface that
+    // doesn't assume exactness, and which pays the corresponding overhead.
+    let mut input0 = [0; 2 * HASH_SIZE];
+    input0[..HASH_SIZE].copy_from_slice(left_children[0].as_bytes());
+    input0[HASH_SIZE..].copy_from_slice(left_children[1].as_bytes());
+    let mut input1 = [0; 2 * HASH_SIZE];
+    input1[..HASH_SIZE].copy_from_slice(left_children[2].as_bytes());
+    input1[HASH_SIZE..].copy_from_slice(left_children[3].as_bytes());
+    let mut input2 = [0; 2 * HASH_SIZE];
+    input2[..HASH_SIZE].copy_from_slice(left_children[4].as_bytes());
+    input2[HASH_SIZE..].copy_from_slice(left_children[5].as_bytes());
+    let mut input3 = [0; 2 * HASH_SIZE];
+    input3[..HASH_SIZE].copy_from_slice(left_children[6].as_bytes());
+    input3[HASH_SIZE..].copy_from_slice(left_children[7].as_bytes());
+    let mut input4 = [0; 2 * HASH_SIZE];
+    input4[..HASH_SIZE].copy_from_slice(right_children[0].as_bytes());
+    input4[HASH_SIZE..].copy_from_slice(right_children[1].as_bytes());
+    let mut input5 = [0; 2 * HASH_SIZE];
+    input5[..HASH_SIZE].copy_from_slice(right_children[2].as_bytes());
+    input5[HASH_SIZE..].copy_from_slice(right_children[3].as_bytes());
+    let mut input6 = [0; 2 * HASH_SIZE];
+    input6[..HASH_SIZE].copy_from_slice(right_children[4].as_bytes());
+    input6[HASH_SIZE..].copy_from_slice(right_children[5].as_bytes());
+    let mut input7 = [0; 2 * HASH_SIZE];
+    input7[..HASH_SIZE].copy_from_slice(right_children[6].as_bytes());
+    input7[HASH_SIZE..].copy_from_slice(right_children[7].as_bytes());
 
-    let mut parent0 = [0; 2 * HASH_SIZE];
-    parent0[..HASH_SIZE].copy_from_slice(left_children[0].as_bytes());
-    parent0[HASH_SIZE..].copy_from_slice(left_children[1].as_bytes());
-    let mut parent1 = [0; 2 * HASH_SIZE];
-    parent1[..HASH_SIZE].copy_from_slice(left_children[2].as_bytes());
-    parent1[HASH_SIZE..].copy_from_slice(left_children[3].as_bytes());
-    let mut parent2 = [0; 2 * HASH_SIZE];
-    parent2[..HASH_SIZE].copy_from_slice(left_children[4].as_bytes());
-    parent2[HASH_SIZE..].copy_from_slice(left_children[5].as_bytes());
-    let mut parent3 = [0; 2 * HASH_SIZE];
-    parent3[..HASH_SIZE].copy_from_slice(left_children[6].as_bytes());
-    parent3[HASH_SIZE..].copy_from_slice(left_children[7].as_bytes());
-    let mut parent4 = [0; 2 * HASH_SIZE];
-    parent4[..HASH_SIZE].copy_from_slice(right_children[0].as_bytes());
-    parent4[HASH_SIZE..].copy_from_slice(right_children[1].as_bytes());
-    let mut parent5 = [0; 2 * HASH_SIZE];
-    parent5[..HASH_SIZE].copy_from_slice(right_children[2].as_bytes());
-    parent5[HASH_SIZE..].copy_from_slice(right_children[3].as_bytes());
-    let mut parent6 = [0; 2 * HASH_SIZE];
-    parent6[..HASH_SIZE].copy_from_slice(right_children[4].as_bytes());
-    parent6[HASH_SIZE..].copy_from_slice(right_children[5].as_bytes());
-    let mut parent7 = [0; 2 * HASH_SIZE];
-    parent7[..HASH_SIZE].copy_from_slice(right_children[6].as_bytes());
-    parent7[HASH_SIZE..].copy_from_slice(right_children[7].as_bytes());
-    blake2s_simd::hash8_exact(
-        &parent_params_blake2s(),
-        &parent0,
-        &parent1,
-        &parent2,
-        &parent3,
-        &parent4,
-        &parent5,
-        &parent6,
-        &parent7,
-    )
+    let params = parent_params_blake2s();
+    let mut jobs = [
+        blake2s_simd::many::HashManyJob::new(&params, &input0),
+        blake2s_simd::many::HashManyJob::new(&params, &input1),
+        blake2s_simd::many::HashManyJob::new(&params, &input2),
+        blake2s_simd::many::HashManyJob::new(&params, &input3),
+        blake2s_simd::many::HashManyJob::new(&params, &input4),
+        blake2s_simd::many::HashManyJob::new(&params, &input5),
+        blake2s_simd::many::HashManyJob::new(&params, &input6),
+        blake2s_simd::many::HashManyJob::new(&params, &input7),
+    ];
+    blake2s_simd::many::hash_many(jobs.iter_mut());
+    [
+        jobs[0].to_hash(),
+        jobs[1].to_hash(),
+        jobs[2].to_hash(),
+        jobs[3].to_hash(),
+        jobs[4].to_hash(),
+        jobs[5].to_hash(),
+        jobs[6].to_hash(),
+        jobs[7].to_hash(),
+    ]
 }
 
 pub fn bao_blake2s_parallel_parents(input: &[u8]) -> blake2s_simd::Hash {
@@ -493,13 +539,20 @@ pub fn bao_4ary_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
     assert_eq!(0, input.len() % (4 * CHUNK_SIZE));
 
     if input.len() == 4 * CHUNK_SIZE {
-        return blake2b_simd::hash4_exact(
-            &chunk_params_blake2b(),
-            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
-        );
+        let params = chunk_params_blake2b();
+        let mut jobs = [
+            blake2b_simd::many::HashManyJob::new(&params, &input[0 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2b_simd::many::HashManyJob::new(&params, &input[1 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2b_simd::many::HashManyJob::new(&params, &input[2 * CHUNK_SIZE..][..CHUNK_SIZE]),
+            blake2b_simd::many::HashManyJob::new(&params, &input[3 * CHUNK_SIZE..][..CHUNK_SIZE]),
+        ];
+        blake2b_simd::many::hash_many(jobs.iter_mut());
+        return [
+            jobs[0].to_hash(),
+            jobs[1].to_hash(),
+            jobs[2].to_hash(),
+            jobs[3].to_hash(),
+        ];
     }
 
     let quarter = input.len() / 4;
@@ -538,13 +591,20 @@ pub fn bao_4ary_parallel_parents_recurse(input: &[u8]) -> [blake2b_simd::Hash; 4
     parent3[1 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children3[1].as_bytes());
     parent3[2 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children3[2].as_bytes());
     parent3[3 * HASH_SIZE..][..HASH_SIZE].copy_from_slice(children3[3].as_bytes());
-    blake2b_simd::hash4_exact(
-        &parent_params_blake2b(),
-        &parent0,
-        &parent1,
-        &parent2,
-        &parent3,
-    )
+    let params = parent_params_blake2b();
+    let mut jobs = [
+        blake2b_simd::many::HashManyJob::new(&params, &parent0),
+        blake2b_simd::many::HashManyJob::new(&params, &parent1),
+        blake2b_simd::many::HashManyJob::new(&params, &parent2),
+        blake2b_simd::many::HashManyJob::new(&params, &parent3),
+    ];
+    blake2b_simd::many::hash_many(jobs.iter_mut());
+    [
+        jobs[0].to_hash(),
+        jobs[1].to_hash(),
+        jobs[2].to_hash(),
+        jobs[3].to_hash(),
+    ]
 }
 
 pub fn bao_4ary_parallel_parents(input: &[u8]) -> blake2b_simd::Hash {
@@ -645,11 +705,20 @@ impl Either {
 }
 
 fn hash_4_chunks_either(chunk0: &[u8], chunk1: &[u8], chunk2: &[u8], chunk3: &[u8]) -> [Either; 4] {
-    let chunk_hashes =
-        blake2b_simd::hash4_exact(&chunk_params_blake2b(), chunk0, chunk1, chunk2, chunk3);
-    match chunk_hashes {
-        [h0, h1, h2, h3] => [B(h0), B(h1), B(h2), B(h3)],
-    }
+    let params = chunk_params_blake2b();
+    let mut jobs = [
+        blake2b_simd::many::HashManyJob::new(&params, chunk0),
+        blake2b_simd::many::HashManyJob::new(&params, chunk1),
+        blake2b_simd::many::HashManyJob::new(&params, chunk2),
+        blake2b_simd::many::HashManyJob::new(&params, chunk3),
+    ];
+    blake2b_simd::many::hash_many(&mut jobs);
+    [
+        B(jobs[0].to_hash()),
+        B(jobs[1].to_hash()),
+        B(jobs[2].to_hash()),
+        B(jobs[3].to_hash()),
+    ]
 }
 
 fn parent_hash_either(left: &Either, right: &Either, finalization: Finalization) -> Either {
@@ -741,22 +810,28 @@ pub fn bao_blake2hybrid_parallel_parents_recurse(input: &[u8]) -> [Either; 8] {
     let mut parent7 = [0; 2 * HASH_SIZE];
     parent7[..HASH_SIZE].copy_from_slice(right_children[6].as_bytes());
     parent7[HASH_SIZE..].copy_from_slice(right_children[7].as_bytes());
-    let parents = blake2s_simd::hash8_exact(
-        &parent_params_blake2s(),
-        &parent0,
-        &parent1,
-        &parent2,
-        &parent3,
-        &parent4,
-        &parent5,
-        &parent6,
-        &parent7,
-    );
-    match parents {
-        [h0, h1, h2, h3, h4, h5, h6, h7] => {
-            [S(h0), S(h1), S(h2), S(h3), S(h4), S(h5), S(h6), S(h7)]
-        }
-    }
+    let params = parent_params_blake2s();
+    let mut jobs = [
+        blake2s_simd::many::HashManyJob::new(&params, &parent0),
+        blake2s_simd::many::HashManyJob::new(&params, &parent1),
+        blake2s_simd::many::HashManyJob::new(&params, &parent2),
+        blake2s_simd::many::HashManyJob::new(&params, &parent3),
+        blake2s_simd::many::HashManyJob::new(&params, &parent4),
+        blake2s_simd::many::HashManyJob::new(&params, &parent5),
+        blake2s_simd::many::HashManyJob::new(&params, &parent6),
+        blake2s_simd::many::HashManyJob::new(&params, &parent7),
+    ];
+    blake2s_simd::many::hash_many(jobs.iter_mut());
+    [
+        S(jobs[0].to_hash()),
+        S(jobs[1].to_hash()),
+        S(jobs[2].to_hash()),
+        S(jobs[3].to_hash()),
+        S(jobs[4].to_hash()),
+        S(jobs[5].to_hash()),
+        S(jobs[6].to_hash()),
+        S(jobs[7].to_hash()),
+    ]
 }
 
 pub fn bao_blake2hybrid_parallel_parents(input: &[u8]) -> Either {
