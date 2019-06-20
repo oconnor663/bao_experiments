@@ -9,111 +9,36 @@ use std::mem;
 // of 4 times the chunk size. 2^24 bytes is about 17 MB.
 const LENGTH: usize = 1 << 24;
 
-fn bench_blake2b_standard(c: &mut Criterion) {
+fn bench_bao_standard(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
-        Benchmark::new("bench_blake2b_standard", |b| {
-            // TRICKY BENCHMARKING DETAIL! It's important to avoid using all-zero memory as input:
-            // - The allocator might return uninitialized pages, which get zeroed lazily when
-            //   they're read. In that case, the first iteration pays the cost of initializnig the
-            //   memory, which makes your throughput lower and less consistent.
-            // - For some reason I don't understand, benchmarks on a giant 48-physical-core AWS
-            //   machine are 20% *faster* when the input is all-zeros. There might be some other
-            //   effect that comes into play with the gigantic inputs we use in those benchmarks.
+        Benchmark::new("bench_bao_standard", |b| {
             let input = vec![0xff; LENGTH];
             b.iter(move || bao_standard(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
+        })
+        .throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
 
-fn bench_blake2b_standard_parallel_parents(c: &mut Criterion) {
+fn bench_bao_parallel_parents(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
-        Benchmark::new("bench_blake2b_standard_parallel_parents", |b| {
+        Benchmark::new("bench_bao_parallel_parents", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || bao_standard_parallel_parents(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
+            b.iter(move || bao_parallel_parents(&input))
+        })
+        .throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
 
-fn bench_blake2s(c: &mut Criterion) {
+fn bench_bao_large_chunks(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
-        Benchmark::new("bench_blake2s", |b| {
+        Benchmark::new("bench_bao_large_chunks", |b| {
             let input = vec![0xff; LENGTH];
-            b.iter(move || bao_blake2s(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
-fn bench_blake2s_parallel_parents(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2s_parallel_parents", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_blake2s_parallel_parents(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
-fn bench_blake2b_4ary(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2b_4ary", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_4ary(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
-fn bench_blake2b_4ary_parallel_parents(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2b_4ary_parallel_parents", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_4ary_parallel_parents(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
-fn bench_blake2b_large_chunks(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2b_large_chunks", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_blake2b_large_chunks(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
-fn bench_blake2s_large_chunks(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2s_large_chunks", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_blake2s_large_chunks(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
-// NOTE: This benchmark is slower than it should be, for lack of an SSE implementation of BLAKE2s.
-fn bench_blake2hybrid(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2hybrid", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_blake2hybrid(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
-    );
-}
-
-fn bench_blake2hybrid_parallel_parents(c: &mut Criterion) {
-    c.bench(
-        "throughput_benches",
-        Benchmark::new("bench_blake2hybrid_parallel_parents", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_blake2hybrid_parallel_parents(&input))
-        }).throughput(Throughput::Bytes(LENGTH as u32)),
+            b.iter(move || bao_large_chunks(&input))
+        })
+        .throughput(Throughput::Bytes(LENGTH as u32)),
     );
 }
 
@@ -306,28 +231,13 @@ fn bench_load_4_blake2b_blocks_gather_inner(c: &mut Criterion) {
     );
 }
 
-// For the first benchmark, use an extra long warmup, to make sure it doesn't unfairly benefit from
-// going first.
-criterion_group!(
-    name = warmup_bench;
-    config = Criterion::default().warm_up_time(std::time::Duration::from_secs(10));
-    targets =
-        bench_blake2b_standard,
-);
-
 criterion_group!(
     name = throughput_benches;
     config = Criterion::default();
     targets =
-        bench_blake2b_standard_parallel_parents,
-        bench_blake2s,
-        bench_blake2s_parallel_parents,
-        bench_blake2b_4ary,
-        bench_blake2b_4ary_parallel_parents,
-        bench_blake2b_large_chunks,
-        bench_blake2s_large_chunks,
-        bench_blake2hybrid,
-        bench_blake2hybrid_parallel_parents,
+        bench_bao_standard,
+        bench_bao_parallel_parents,
+        bench_bao_large_chunks,
 );
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -347,6 +257,6 @@ criterion_group!(
 
 // The loading benches are only defined on x86.
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-criterion_main!(warmup_bench, throughput_benches, loading_benches);
+criterion_main!(throughput_benches, loading_benches);
 #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-criterion_main!(warmup_bench, throughput_benches);
+criterion_main!(throughput_benches);

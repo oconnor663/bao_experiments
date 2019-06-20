@@ -1,5 +1,4 @@
-use arrayref::mut_array_refs;
-use byteorder::{ByteOrder, LittleEndian};
+use arrayref::{array_ref, mut_array_refs};
 use rand::prelude::*;
 
 #[cfg(target_arch = "x86")]
@@ -28,10 +27,10 @@ unsafe fn load_one_msg_vec_simple(
     i: usize,
 ) -> __m256i {
     load_256_from_4xu64(
-        LittleEndian::read_u64(&msg0[8 * i..]),
-        LittleEndian::read_u64(&msg1[8 * i..]),
-        LittleEndian::read_u64(&msg2[8 * i..]),
-        LittleEndian::read_u64(&msg3[8 * i..]),
+        u64::from_le_bytes(*array_ref!(msg0, 8 * i, 8)),
+        u64::from_le_bytes(*array_ref!(msg1, 8 * i, 8)),
+        u64::from_le_bytes(*array_ref!(msg2, 8 * i, 8)),
+        u64::from_le_bytes(*array_ref!(msg3, 8 * i, 8)),
     )
 }
 

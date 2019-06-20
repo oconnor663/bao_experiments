@@ -1,13 +1,12 @@
 [package]
 name = "bao_experiments"
-version = "0.1.0"
+version = "0.0.0"
 authors = ["Jack O'Connor <oconnor663@gmail.com>"]
+edition = "2018"
 
 [dependencies]
 arrayref = "0.3.5"
-blake2b_simd = "0.5.2"
 blake2s_simd = "0.5.2"
-byteorder = { version = "1.3.2", default-features = false }
 rayon = "1.1.0"
 rand = "0.6.5"
 
