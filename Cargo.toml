@@ -9,6 +9,7 @@ arrayref = "0.3.5"
 blake2s_simd = "0.5.2"
 rayon = "1.1.0"
 rand = "0.6.5"
+page_size = "0.4.1"
 
 [dev-dependencies]
 criterion = "0.2.11"
