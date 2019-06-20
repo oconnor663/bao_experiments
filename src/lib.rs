@@ -1,5 +1,9 @@
+use arrayref::{array_mut_ref, array_ref};
 use arrayvec::ArrayVec;
-use blake2s_simd::{many::HashManyJob, Hash, Params};
+use blake2s_simd::{
+    many::{HashManyJob, MAX_DEGREE},
+    Hash, Params,
+};
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -120,6 +124,14 @@ fn hash_parent(left: &Hash, right: &Hash, finalization: Finalization) -> Hash {
     state.finalize()
 }
 
+fn hash_parent_buf(buf: &[u8; 2 * HASH_SIZE], finalization: Finalization) -> Hash {
+    let mut params = parent_params();
+    if let Root = finalization {
+        params.last_node(true);
+    }
+    params.hash(buf)
+}
+
 fn hash_eight_chunk_subtree(
     chunk0: &[u8],
     chunk1: &[u8],
@@ -134,14 +146,14 @@ fn hash_eight_chunk_subtree(
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
     let params = chunk_params();
     let mut jobs = [
-        blake2s_simd::many::HashManyJob::new(&params, chunk0),
-        blake2s_simd::many::HashManyJob::new(&params, chunk1),
-        blake2s_simd::many::HashManyJob::new(&params, chunk2),
-        blake2s_simd::many::HashManyJob::new(&params, chunk3),
-        blake2s_simd::many::HashManyJob::new(&params, chunk4),
-        blake2s_simd::many::HashManyJob::new(&params, chunk5),
-        blake2s_simd::many::HashManyJob::new(&params, chunk6),
-        blake2s_simd::many::HashManyJob::new(&params, chunk7),
+        HashManyJob::new(&params, chunk0),
+        HashManyJob::new(&params, chunk1),
+        HashManyJob::new(&params, chunk2),
+        HashManyJob::new(&params, chunk3),
+        HashManyJob::new(&params, chunk4),
+        HashManyJob::new(&params, chunk5),
+        HashManyJob::new(&params, chunk6),
+        HashManyJob::new(&params, chunk7),
     ];
     blake2s_simd::many::hash_many(jobs.iter_mut());
 
@@ -162,8 +174,8 @@ fn bao_standard_recurse(input: &[u8], finalization: Finalization) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk(input, finalization);
     }
-    // Special case: If the input is exactly four chunks, hashing those four chunks in parallel
-    // with SIMD is more efficient than going one by one.
+    // Special case: If the input is exactly 8 chunks, hashing those 8 chunks
+    // in parallel with SIMD is more efficient than going one by one.
     if input.len() == 8 * CHUNK_SIZE {
         return hash_eight_chunk_subtree(
             &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
@@ -189,15 +201,15 @@ pub fn bao_standard(input: &[u8]) -> Hash {
     bao_standard_recurse(input, Root)
 }
 
-type HashVec = ArrayVec<[Hash; blake2s_simd::many::MAX_DEGREE]>;
-type JobsVec<'a> = ArrayVec<[blake2s_simd::many::HashManyJob<'a>; blake2s_simd::many::MAX_DEGREE]>;
+const OUT_BUF_LEN: usize = 2 * MAX_DEGREE * HASH_SIZE;
+type JobsVec<'a> = ArrayVec<[HashManyJob<'a>; MAX_DEGREE]>;
 
 // Another approach to standard Bao. This implementation uses SIMD even when
 // hashing parent nodes, to further cut down on overhead without changing the
 // output.
-fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut HashVec) {
-    // The top level handles the root (and therefore the single chunk case).
-    debug_assert!(input.len() > CHUNK_SIZE);
+fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_BUF_LEN]) -> usize {
+    // The top level handles the empty case.
+    debug_assert!(input.len() > 0);
 
     if input.len() <= degree * CHUNK_SIZE {
         let chunk_params = chunk_params();
@@ -206,75 +218,72 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut HashVec) 
             jobs.push(HashManyJob::new(&chunk_params, chunk));
         }
         blake2s_simd::many::hash_many(jobs.iter_mut());
-        for job in &jobs {
-            out.push(job.to_hash());
+        for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
+            job.write_output(array_mut_ref!(dest, 0, HASH_SIZE));
         }
-        return;
+        return jobs.len();
     }
 
     let (left_input, right_input) = input.split_at(left_len(input.len()));
-    let mut left_out = HashVec::new();
-    let mut right_out = HashVec::new();
-    join(
+    let mut left_out = [0; OUT_BUF_LEN];
+    let mut right_out = [0; OUT_BUF_LEN];
+    let (left_n, right_n) = join(
         || bao_parallel_parents_recurse(left_input, degree, &mut left_out),
         || bao_parallel_parents_recurse(right_input, degree, &mut right_out),
     );
-    let mut parents_array = [0; HASH_SIZE * blake2s_simd::many::MAX_DEGREE * 2];
-    let mut parents = parents_array.chunks_exact_mut(2 * HASH_SIZE);
-    let mut parents_count = 0;
-    let mut left_pairs = left_out.chunks_exact(2);
-    let mut right_pairs = right_out.chunks_exact(2);
-    for (pair, parent) in left_pairs.by_ref().zip(&mut parents) {
-        parent[0..HASH_SIZE].copy_from_slice(pair[0].as_bytes());
-        parent[HASH_SIZE..2 * HASH_SIZE].copy_from_slice(pair[1].as_bytes());
-        parents_count += 1;
-    }
-    for (pair, parent) in right_pairs.by_ref().zip(&mut parents) {
-        parent[0..HASH_SIZE].copy_from_slice(pair[0].as_bytes());
-        parent[HASH_SIZE..2 * HASH_SIZE].copy_from_slice(pair[1].as_bytes());
-        parents_count += 1;
-    }
+    debug_assert_eq!(degree, left_n, "left subtree always full");
     let parent_params = parent_params();
     let mut jobs = JobsVec::new();
-    for parent in parents_array
-        .chunks_exact(2 * HASH_SIZE)
-        .take(parents_count)
-    {
-        jobs.push(HashManyJob::new(&parent_params, parent));
+    let left_parent_bufs = left_out.chunks_exact(2 * HASH_SIZE).take(left_n / 2);
+    let right_parent_bufs = right_out.chunks_exact(2 * HASH_SIZE).take(right_n / 2);
+    for in_buf in left_parent_bufs.chain(right_parent_bufs) {
+        jobs.push(HashManyJob::new(&parent_params, in_buf));
     }
     blake2s_simd::many::hash_many(jobs.iter_mut());
-    for job in &jobs {
-        out.push(job.to_hash());
+    for (job, out_buf) in jobs.iter().zip(out.chunks_exact_mut(HASH_SIZE)) {
+        job.write_output(array_mut_ref!(out_buf, 0, HASH_SIZE));
     }
-    // Raise any remaining right children to the level above. The left side
-    // cannot have a remainder.
-    debug_assert_eq!(0, left_pairs.remainder().len());
-    for hash in right_pairs.remainder() {
-        out.push(hash.clone());
+
+    // If there's a right child left over, copy it to the level above.
+    let num_outputs = degree / 2 + (right_n + 1) / 2;
+    if right_n % 2 == 1 {
+        let last_child = &right_out[(right_n - 1) * HASH_SIZE..][..HASH_SIZE];
+        let last_output = &mut out[(num_outputs - 1) * HASH_SIZE..][..HASH_SIZE];
+        last_output.copy_from_slice(last_child);
     }
+
+    num_outputs
 }
 
-pub fn bao_parallel_parents(input: &[u8]) -> blake2s_simd::Hash {
+pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     // Handle the single chunk case explicitly.
     if input.len() <= CHUNK_SIZE {
         return hash_chunk(input, Root);
     }
-    let mut out = HashVec::new();
-    bao_parallel_parents_recurse(input, blake2s_simd::many::degree(), &mut out);
-    debug_assert!(out.len() > 1);
+    let mut out = [0; OUT_BUF_LEN];
+    let mut n = bao_parallel_parents_recurse(input, blake2s_simd::many::degree(), &mut out);
+    debug_assert!(n > 1);
     loop {
-        if out.len() == 2 {
-            return hash_parent(&out[0], &out[1], Root);
+        if n == 2 {
+            return hash_parent_buf(array_ref!(out, 0, 2 * HASH_SIZE), Root);
         }
-        let mut new_out = HashVec::new();
-        let mut pairs = out.chunks_exact(2);
-        for pair in &mut pairs {
-            new_out.push(hash_parent(&pair[0], &pair[1], NotRoot));
+        let mut i = 0;
+        while i < n {
+            let offset = i * HASH_SIZE;
+            if i + 1 < n {
+                // Join two child hashes into one parent hash and write the
+                // result back in place.
+                let parent_hash = hash_parent_buf(array_ref!(&out, offset, 2 * HASH_SIZE), NotRoot);
+                array_mut_ref!(&mut out, offset / 2, HASH_SIZE)
+                    .copy_from_slice(parent_hash.as_bytes());
+            } else {
+                // Copy the leftover child hash.
+                let last_hash = *array_ref!(&out, offset, HASH_SIZE);
+                *array_mut_ref!(&mut out, offset / 2, HASH_SIZE) = last_hash;
+            }
+            i += 2;
         }
-        for hash in pairs.remainder() {
-            new_out.push(hash.clone());
-        }
-        out = new_out;
+        n = n / 2 + (n % 2) as usize;
     }
 }
 
@@ -308,7 +317,7 @@ fn bao_large_chunks_recurse(input: &[u8], finalization: Finalization) -> Hash {
     hash_parent(&left_hash, &right_hash, finalization)
 }
 
-pub fn bao_large_chunks(input: &[u8]) -> blake2s_simd::Hash {
+pub fn bao_large_chunks(input: &[u8]) -> Hash {
     bao_large_chunks_recurse(input, Root)
 }
 
@@ -318,6 +327,21 @@ mod test {
 
     #[test]
     fn test_standard() {
+        let input = b"";
+        let expected = "99fa3a0ee4b435ff17157e205f091cac3938e82335e9684446e513ea1c3b698a";
+        let hash = bao_standard(input);
+        assert_eq!(expected, &*hash.to_hex());
+
+        let input = vec![0; CHUNK_SIZE];
+        let expected = "930f49df68777515ba0891aa7ece3918070517c1ae65ad8b39ec7108d96ebce6";
+        let hash = bao_standard(&input);
+        assert_eq!(expected, &*hash.to_hex());
+
+        let input = vec![0; CHUNK_SIZE + 1];
+        let expected = "d414be8f1ac545c71fcbe46a28fe5924f00111d0cca8828a4dfa94e3b72ffb1a";
+        let hash = bao_standard(&input);
+        assert_eq!(expected, &*hash.to_hex());
+
         let input = vec![0; 1_000_000];
         let expected = "c298c4fb54c75e48ea92a210aa071888a6ada44968d116064269204f3e96bfb9";
         let hash = bao_standard(&input);
@@ -326,9 +350,12 @@ mod test {
 
     #[test]
     fn test_parallel_parents() {
-        let input = vec![0; 1_000_000];
-        let expected = "c298c4fb54c75e48ea92a210aa071888a6ada44968d116064269204f3e96bfb9";
-        let hash = bao_parallel_parents(&input);
-        assert_eq!(expected, &*hash.to_hex());
+        for &len in &[0, 1, CHUNK_SIZE, CHUNK_SIZE + 1, 1_000_000] {
+            eprintln!("case {}", len);
+            let input = vec![0; len];
+            let expected = bao_standard(&input).to_hex();
+            let hash = bao_parallel_parents(&input);
+            assert_eq!(expected, hash.to_hex());
+        }
     }
 }
