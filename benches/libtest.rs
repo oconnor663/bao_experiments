@@ -24,64 +24,21 @@ fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
 }
 
 #[bench]
-fn bench_blake2b_standard(b: &mut Bencher) {
+fn bench_bao_standard(b: &mut Bencher) {
     let input = input(b, LENGTH);
     b.iter(|| bao_standard(&input));
 }
 
 #[bench]
-fn bench_blake2b_standard_parallel_parents(b: &mut Bencher) {
+fn bench_bao_parallel_parents(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_standard_parallel_parents(&input));
+    b.iter(|| bao_parallel_parents(&input));
 }
 
 #[bench]
-fn bench_blake2s(b: &mut Bencher) {
+fn bench_bao_large_chunks(b: &mut Bencher) {
     let input = input(b, LENGTH);
-    b.iter(|| bao_blake2s(&input));
-}
-
-#[bench]
-fn bench_blake2s_parallel_parents(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_blake2s_parallel_parents(&input));
-}
-
-#[bench]
-fn bench_blake2b_4ary(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_4ary(&input));
-}
-
-#[bench]
-fn bench_blake2b_4ary_parallel_parents(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_4ary_parallel_parents(&input));
-}
-
-#[bench]
-fn bench_blake2b_large_chunks(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_blake2b_large_chunks(&input));
-}
-
-#[bench]
-fn bench_blake2s_large_chunks(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_blake2s_large_chunks(&input));
-}
-
-// NOTE: This benchmark is slower than it should be, for lack of an SSE implementation of BLAKE2s.
-#[bench]
-fn bench_blake2hybrid(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_blake2hybrid(&input));
-}
-
-#[bench]
-fn bench_blake2hybrid_parallel_parents(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_blake2hybrid_parallel_parents(&input));
+    b.iter(|| bao_large_chunks(&input));
 }
 
 #[bench]
