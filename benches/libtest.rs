@@ -8,37 +8,25 @@ use bao_experiments::*;
 use std::mem;
 use test::Bencher;
 
-// The 4ary implementation is only defined for inputs that are a power of 4 times the chunk size.
-const LENGTH: usize = 1 << 24; // about 17 MB
-
-fn input(b: &mut Bencher, size: usize) -> Vec<u8> {
-    b.bytes = size as u64;
-    // TRICKY BENCHMARKING DETAIL! It's important to avoid using all-zero memory as input:
-    // - The allocator might return uninitialized pages, which get zeroed lazily when they're read.
-    //   In that case, the first iteration pays the cost of initializnig the memory, which makes
-    //   your throughput lower and less consistent.
-    // - For some reason I don't understand, benchmarks on a giant 48-physical-core AWS machine are
-    //   20% *faster* when the input is all-zeros. There might be some other effect that comes into
-    //   play with the gigantic inputs we use in those benchmarks.
-    vec![0xff; size]
-}
-
 #[bench]
 fn bench_bao_standard(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_standard(&input));
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_standard(input.get()));
 }
 
 #[bench]
 fn bench_bao_parallel_parents(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_parallel_parents(&input));
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_parallel_parents(input.get()));
 }
 
 #[bench]
 fn bench_bao_large_chunks(b: &mut Bencher) {
-    let input = input(b, LENGTH);
-    b.iter(|| bao_large_chunks(&input));
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_large_chunks(input.get()));
 }
 
 #[bench]

@@ -1,4 +1,6 @@
 use blake2s_simd::Hash;
+use rand::seq::SliceRandom;
+use rand::RngCore;
 
 #[cfg(not(feature = "single"))]
 use rayon::join;
@@ -15,6 +17,42 @@ where
 const HASH_SIZE: usize = 32;
 const CHUNK_SIZE: usize = 4096;
 const LARGE_CHUNK_SIZE: usize = 65536;
+pub const BENCH_LENGTH: usize = 1 << 24; // about 17 MB
+
+// This struct randomizes two things:
+// 1. The actual bytes of input.
+// 2. The page offset the input starts at.
+pub struct RandomInput {
+    buf: Vec<u8>,
+    len: usize,
+    offsets: Vec<usize>,
+    offset_index: usize,
+}
+
+impl RandomInput {
+    pub fn new(len: usize) -> Self {
+        let page_size: usize = page_size::get();
+        let mut buf = vec![0u8; len + page_size];
+        rand::thread_rng().fill_bytes(&mut buf);
+        let mut offsets: Vec<usize> = (0..page_size).collect();
+        offsets.shuffle(&mut rand::thread_rng());
+        Self {
+            buf,
+            len,
+            offsets,
+            offset_index: 0,
+        }
+    }
+
+    pub fn get(&mut self) -> &[u8] {
+        let offset = self.offsets[self.offset_index];
+        self.offset_index += 1;
+        if self.offset_index >= self.offsets.len() {
+            self.offset_index = 0;
+        }
+        &self.buf[offset..][..self.len]
+    }
+}
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod avx2_blake2b_load;

@@ -5,18 +5,14 @@ use bao_experiments::*;
 use criterion::*;
 use std::mem;
 
-// The current 4ary implementation is only defined for inputs that are a power
-// of 4 times the chunk size. 2^24 bytes is about 17 MB.
-const LENGTH: usize = 1 << 24;
-
 fn bench_bao_standard(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
         Benchmark::new("bench_bao_standard", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_standard(&input))
+            let mut input = RandomInput::new(BENCH_LENGTH);
+            b.iter(|| bao_standard(input.get()))
         })
-        .throughput(Throughput::Bytes(LENGTH as u32)),
+        .throughput(Throughput::Bytes(BENCH_LENGTH as u32)),
     );
 }
 
@@ -24,10 +20,10 @@ fn bench_bao_parallel_parents(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
         Benchmark::new("bench_bao_parallel_parents", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_parallel_parents(&input))
+            let mut input = RandomInput::new(BENCH_LENGTH);
+            b.iter(|| bao_parallel_parents(input.get()))
         })
-        .throughput(Throughput::Bytes(LENGTH as u32)),
+        .throughput(Throughput::Bytes(BENCH_LENGTH as u32)),
     );
 }
 
@@ -35,10 +31,10 @@ fn bench_bao_large_chunks(c: &mut Criterion) {
     c.bench(
         "throughput_benches",
         Benchmark::new("bench_bao_large_chunks", |b| {
-            let input = vec![0xff; LENGTH];
-            b.iter(move || bao_large_chunks(&input))
+            let mut input = RandomInput::new(BENCH_LENGTH);
+            b.iter(|| bao_large_chunks(input.get()))
         })
-        .throughput(Throughput::Bytes(LENGTH as u32)),
+        .throughput(Throughput::Bytes(BENCH_LENGTH as u32)),
     );
 }
 
