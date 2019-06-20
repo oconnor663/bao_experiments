@@ -1,5 +1,9 @@
+use array_macro::array;
 use arrayvec::ArrayVec;
-use blake2s_simd::{many::HashManyJob, Hash, Params};
+use blake2s_simd::{
+    many::{HashManyJob, MAX_DEGREE},
+    Hash, Params,
+};
 use rand::seq::SliceRandom;
 use rand::RngCore;
 
@@ -189,8 +193,8 @@ pub fn bao_standard(input: &[u8]) -> Hash {
     bao_standard_recurse(input, Root)
 }
 
-type HashVec = ArrayVec<[Hash; blake2s_simd::many::MAX_DEGREE]>;
-type JobsVec<'a> = ArrayVec<[blake2s_simd::many::HashManyJob<'a>; blake2s_simd::many::MAX_DEGREE]>;
+type HashVec = ArrayVec<[Hash; MAX_DEGREE]>;
+type JobsVec<'a> = ArrayVec<[blake2s_simd::many::HashManyJob<'a>; MAX_DEGREE]>;
 
 // Another approach to standard Bao. This implementation uses SIMD even when
 // hashing parent nodes, to further cut down on overhead without changing the
@@ -215,11 +219,20 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut HashVec) 
     let (left_input, right_input) = input.split_at(left_len(input.len()));
     let mut left_out = HashVec::new();
     let mut right_out = HashVec::new();
-    join(
-        || bao_parallel_parents_recurse(left_input, degree, &mut left_out),
-        || bao_parallel_parents_recurse(right_input, degree, &mut right_out),
-    );
-    let mut parents_array = [0; HASH_SIZE * blake2s_simd::many::MAX_DEGREE * 2];
+    if left_input.len() >= MAX_DEGREE * CHUNK_SIZE {
+        join(
+            || {
+                left_out = bao_parallel_parents_recurse_full(left_input).into();
+            },
+            || bao_parallel_parents_recurse(right_input, degree, &mut right_out),
+        );
+    } else {
+        join(
+            || bao_parallel_parents_recurse(left_input, degree, &mut left_out),
+            || bao_parallel_parents_recurse(right_input, degree, &mut right_out),
+        );
+    }
+    let mut parents_array = [0; HASH_SIZE * MAX_DEGREE * 2];
     let mut parents = parents_array.chunks_exact_mut(2 * HASH_SIZE);
     let mut parents_count = 0;
     let mut left_pairs = left_out.chunks_exact(2);
@@ -252,6 +265,42 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut HashVec) 
     for hash in right_pairs.remainder() {
         out.push(hash.clone());
     }
+}
+
+fn bao_parallel_parents_recurse_full(input: &[u8]) -> [Hash; MAX_DEGREE] {
+    // The top level handles the root (and therefore the single chunk case).
+    debug_assert!(input.len() > CHUNK_SIZE);
+
+    if input.len() == MAX_DEGREE * CHUNK_SIZE {
+        let chunk_params = chunk_params();
+        let mut jobs = array![|i: usize| HashManyJob::new(&chunk_params, &input[i * CHUNK_SIZE..(i + 1) * CHUNK_SIZE]); MAX_DEGREE];
+        blake2s_simd::many::hash_many(jobs.iter_mut());
+        return array![|i: usize| jobs[i].to_hash(); MAX_DEGREE];
+    }
+
+    debug_assert_eq!(left_len(input.len()), input.len() / 2);
+    let (left_input, right_input) = input.split_at(input.len() / 2);
+    let (left_out, right_out) = join(
+        || bao_parallel_parents_recurse_full(left_input),
+        || bao_parallel_parents_recurse_full(right_input),
+    );
+    let nth_child = |n: usize| -> &Hash {
+        if n < MAX_DEGREE {
+            &left_out[n]
+        } else {
+            &right_out[n - MAX_DEGREE]
+        }
+    };
+    let parents = array![|i: usize| {
+        let mut parent = [0; 2 * HASH_SIZE];
+        parent[..HASH_SIZE].copy_from_slice(nth_child(2 * i).as_bytes());
+        parent[HASH_SIZE..].copy_from_slice(nth_child(2 * i + 1).as_bytes());
+        parent
+    }; MAX_DEGREE];
+    let parent_params = parent_params();
+    let mut jobs = array![|i: usize| HashManyJob::new(&parent_params, &parents[i][..]); MAX_DEGREE];
+    blake2s_simd::many::hash_many(jobs.iter_mut());
+    array![|i: usize| jobs[i].to_hash(); MAX_DEGREE]
 }
 
 pub fn bao_parallel_parents(input: &[u8]) -> blake2s_simd::Hash {

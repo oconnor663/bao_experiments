@@ -11,6 +11,7 @@ rayon = "1.1.0"
 rand = "0.6.5"
 page_size = "0.4.1"
 arrayvec = "0.4.10"
+array-macro = "1.0.3"
 
 [dev-dependencies]
 criterion = "0.2.11"
