@@ -19,9 +19,10 @@ where
     (f1(), f2())
 }
 
-const HASH_SIZE: usize = 32;
-const CHUNK_SIZE: usize = 4096;
-const LARGE_CHUNK_SIZE: usize = 65536;
+pub const HASH_SIZE: usize = 32;
+pub const SMALL_CHUNK_SIZE: usize = 1024;
+pub const CHUNK_SIZE: usize = 4096;
+pub const LARGE_CHUNK_SIZE: usize = 65536;
 pub const BENCH_LENGTH: usize = 1 << 24; // about 17 MB
 
 // This struct randomizes two things:
@@ -68,11 +69,11 @@ fn largest_power_of_two_leq(n: usize) -> usize {
     ((n / 2) + 1).next_power_of_two()
 }
 
-fn left_len(content_len: usize) -> usize {
-    debug_assert!(content_len > CHUNK_SIZE);
+fn left_len(content_len: usize, chunk_size: usize) -> usize {
+    debug_assert!(content_len > chunk_size);
     // Subtract 1 to reserve at least one byte for the right side.
-    let full_chunks = (content_len - 1) / CHUNK_SIZE;
-    largest_power_of_two_leq(full_chunks) * CHUNK_SIZE
+    let full_chunks = (content_len - 1) / chunk_size;
+    largest_power_of_two_leq(full_chunks) * chunk_size
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -168,53 +169,55 @@ fn hash_eight_chunk_subtree(
     hash_parent(&quad0, &quad1, finalization)
 }
 
-// This is the current standard Bao function. Note that this repo only contains large benchmarks,
-// so there's no serial fallback here for short inputs.
-fn bao_standard_recurse(input: &[u8], finalization: Finalization) -> Hash {
-    if input.len() <= CHUNK_SIZE {
+// This is the standard Bao function, with SIMD parallelism enabled only for chunks.
+fn bao_basic_recurse(input: &[u8], finalization: Finalization, chunk_size: usize) -> Hash {
+    if input.len() <= chunk_size {
         return hash_chunk(input, finalization);
     }
     // Special case: If the input is exactly 8 chunks, hashing those 8 chunks
     // in parallel with SIMD is more efficient than going one by one.
-    if input.len() == 8 * CHUNK_SIZE {
+    if input.len() == 8 * chunk_size {
         return hash_eight_chunk_subtree(
-            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[4 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[5 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[6 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[7 * CHUNK_SIZE..][..CHUNK_SIZE],
+            &input[0 * chunk_size..][..chunk_size],
+            &input[1 * chunk_size..][..chunk_size],
+            &input[2 * chunk_size..][..chunk_size],
+            &input[3 * chunk_size..][..chunk_size],
+            &input[4 * chunk_size..][..chunk_size],
+            &input[5 * chunk_size..][..chunk_size],
+            &input[6 * chunk_size..][..chunk_size],
+            &input[7 * chunk_size..][..chunk_size],
             finalization,
         );
     }
-    let (left, right) = input.split_at(left_len(input.len()));
+    let (left, right) = input.split_at(left_len(input.len(), chunk_size));
     let (left_hash, right_hash) = join(
-        || bao_standard_recurse(left, NotRoot),
-        || bao_standard_recurse(right, NotRoot),
+        || bao_basic_recurse(left, NotRoot, chunk_size),
+        || bao_basic_recurse(right, NotRoot, chunk_size),
     );
     hash_parent(&left_hash, &right_hash, finalization)
 }
 
-pub fn bao_standard(input: &[u8]) -> Hash {
-    bao_standard_recurse(input, Root)
+pub fn bao_basic(input: &[u8], chunk_size: usize) -> Hash {
+    bao_basic_recurse(input, Root, chunk_size)
 }
 
 const OUT_BUF_LEN: usize = 2 * MAX_DEGREE * HASH_SIZE;
 type JobsVec<'a> = ArrayVec<[HashManyJob<'a>; MAX_DEGREE]>;
 
-// Another approach to standard Bao. This implementation uses SIMD even when
-// hashing parent nodes, to further cut down on overhead without changing the
-// output.
-fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_BUF_LEN]) -> usize {
+// The same function as bao_basic, but this time we enable parallelism for the
+// parents too, all the way up the tree.
+fn bao_parallel_parents_recurse(
+    input: &[u8],
+    out: &mut [u8; OUT_BUF_LEN],
+    chunk_size: usize,
+) -> usize {
     // The top level handles the empty case.
     debug_assert!(input.len() > 0);
 
-    if input.len() <= degree * CHUNK_SIZE {
+    if input.len() <= MAX_DEGREE * chunk_size {
         let chunk_params = chunk_params();
         let mut jobs = JobsVec::new();
-        for chunk in input.chunks(CHUNK_SIZE) {
+        for chunk in input.chunks(chunk_size) {
             jobs.push(HashManyJob::new(&chunk_params, chunk));
         }
         blake2s_simd::many::hash_many(jobs.iter_mut());
@@ -224,14 +227,14 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_
         return jobs.len();
     }
 
-    let (left_input, right_input) = input.split_at(left_len(input.len()));
+    let (left_input, right_input) = input.split_at(left_len(input.len(), chunk_size));
     let mut left_out = [0; OUT_BUF_LEN];
     let mut right_out = [0; OUT_BUF_LEN];
     let (left_n, right_n) = join(
-        || bao_parallel_parents_recurse(left_input, degree, &mut left_out),
-        || bao_parallel_parents_recurse(right_input, degree, &mut right_out),
+        || bao_parallel_parents_recurse(left_input, &mut left_out, chunk_size),
+        || bao_parallel_parents_recurse(right_input, &mut right_out, chunk_size),
     );
-    debug_assert_eq!(degree, left_n, "left subtree always full");
+    debug_assert_eq!(MAX_DEGREE, left_n, "left subtree always full");
     let parent_params = parent_params();
     let mut jobs = JobsVec::new();
     let left_parent_bufs = left_out.chunks_exact(2 * HASH_SIZE).take(left_n / 2);
@@ -245,7 +248,7 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_
     }
 
     // If there's a right child left over, copy it to the level above.
-    let num_outputs = degree / 2 + (right_n + 1) / 2;
+    let num_outputs = MAX_DEGREE / 2 + (right_n + 1) / 2;
     if right_n % 2 == 1 {
         let last_child = &right_out[(right_n - 1) * HASH_SIZE..][..HASH_SIZE];
         let last_output = &mut out[(num_outputs - 1) * HASH_SIZE..][..HASH_SIZE];
@@ -255,13 +258,13 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_
     num_outputs
 }
 
-pub fn bao_parallel_parents(input: &[u8]) -> Hash {
+pub fn bao_parallel_parents(input: &[u8], chunk_size: usize) -> Hash {
     // Handle the single chunk case explicitly.
-    if input.len() <= CHUNK_SIZE {
+    if input.len() <= chunk_size {
         return hash_chunk(input, Root);
     }
     let mut out = [0; OUT_BUF_LEN];
-    let mut n = bao_parallel_parents_recurse(input, blake2s_simd::many::degree(), &mut out);
+    let mut n = bao_parallel_parents_recurse(input, &mut out, chunk_size);
     debug_assert!(n > 1);
     loop {
         if n == 2 {
@@ -309,7 +312,7 @@ fn bao_large_chunks_recurse(input: &[u8], finalization: Finalization) -> Hash {
             finalization,
         );
     }
-    let (left, right) = input.split_at(left_len(input.len()));
+    let (left, right) = input.split_at(left_len(input.len(), LARGE_CHUNK_SIZE));
     let (left_hash, right_hash) = join(
         || bao_large_chunks_recurse(left, NotRoot),
         || bao_large_chunks_recurse(right, NotRoot),
@@ -326,25 +329,25 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_standard() {
+    fn test_basic() {
         let input = b"";
         let expected = "99fa3a0ee4b435ff17157e205f091cac3938e82335e9684446e513ea1c3b698a";
-        let hash = bao_standard(input);
+        let hash = bao_basic(input, CHUNK_SIZE);
         assert_eq!(expected, &*hash.to_hex());
 
         let input = vec![0; CHUNK_SIZE];
         let expected = "930f49df68777515ba0891aa7ece3918070517c1ae65ad8b39ec7108d96ebce6";
-        let hash = bao_standard(&input);
+        let hash = bao_basic(&input, CHUNK_SIZE);
         assert_eq!(expected, &*hash.to_hex());
 
         let input = vec![0; CHUNK_SIZE + 1];
         let expected = "d414be8f1ac545c71fcbe46a28fe5924f00111d0cca8828a4dfa94e3b72ffb1a";
-        let hash = bao_standard(&input);
+        let hash = bao_basic(&input, CHUNK_SIZE);
         assert_eq!(expected, &*hash.to_hex());
 
         let input = vec![0; 1_000_000];
         let expected = "c298c4fb54c75e48ea92a210aa071888a6ada44968d116064269204f3e96bfb9";
-        let hash = bao_standard(&input);
+        let hash = bao_basic(&input, CHUNK_SIZE);
         assert_eq!(expected, &*hash.to_hex());
     }
 
@@ -353,8 +356,8 @@ mod test {
         for &len in &[0, 1, CHUNK_SIZE, CHUNK_SIZE + 1, 1_000_000] {
             eprintln!("case {}", len);
             let input = vec![0; len];
-            let expected = bao_standard(&input).to_hex();
-            let hash = bao_parallel_parents(&input);
+            let expected = bao_basic(&input, CHUNK_SIZE).to_hex();
+            let hash = bao_parallel_parents(&input, CHUNK_SIZE);
             assert_eq!(expected, hash.to_hex());
         }
     }

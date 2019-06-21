@@ -9,17 +9,45 @@ use std::mem;
 use test::Bencher;
 
 #[bench]
-fn bench_bao_standard(b: &mut Bencher) {
+fn bench_bao_basic_1_small(b: &mut Bencher) {
     b.bytes = BENCH_LENGTH as u64;
     let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_standard(input.get()));
+    b.iter(|| bao_basic(input.get(), SMALL_CHUNK_SIZE));
 }
 
 #[bench]
-fn bench_bao_parallel_parents(b: &mut Bencher) {
+fn bench_bao_basic_2_medium(b: &mut Bencher) {
     b.bytes = BENCH_LENGTH as u64;
     let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_parallel_parents(input.get()));
+    b.iter(|| bao_basic(input.get(), CHUNK_SIZE));
+}
+
+#[bench]
+fn bench_bao_basic_3_large(b: &mut Bencher) {
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_basic(input.get(), LARGE_CHUNK_SIZE));
+}
+
+#[bench]
+fn bench_bao_parallel_parents_1_small(b: &mut Bencher) {
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_parallel_parents(input.get(), SMALL_CHUNK_SIZE));
+}
+
+#[bench]
+fn bench_bao_parallel_parents_2_medium(b: &mut Bencher) {
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_parallel_parents(input.get(), CHUNK_SIZE));
+}
+
+#[bench]
+fn bench_bao_parallel_parents_3_large(b: &mut Bencher) {
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_parallel_parents(input.get(), LARGE_CHUNK_SIZE));
 }
 
 #[bench]
