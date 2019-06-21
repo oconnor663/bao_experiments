@@ -201,6 +201,47 @@ pub fn bao_standard(input: &[u8]) -> Hash {
     bao_standard_recurse(input, Root)
 }
 
+fn large_left_len(content_len: usize) -> usize {
+    debug_assert!(content_len > LARGE_CHUNK_SIZE);
+    // Subtract 1 to reserve at least one byte for the right side.
+    let full_chunks = (content_len - 1) / LARGE_CHUNK_SIZE;
+    largest_power_of_two_leq(full_chunks) * LARGE_CHUNK_SIZE
+}
+
+// Modified Bao using LARGE_CHUNK_SIZE. This provides a reference point for
+// extremely low parent node overhead, though it probably wouldn't be practical
+// to use such large chunks in the standard.
+fn bao_large_chunks_recurse(input: &[u8], finalization: Finalization) -> Hash {
+    if input.len() <= LARGE_CHUNK_SIZE {
+        return hash_chunk(input, finalization);
+    }
+    // Special case: If the input is exactly 8 chunks, hashing those 8
+    // chunks in parallel with SIMD is more efficient than going one by one.
+    if input.len() == 8 * LARGE_CHUNK_SIZE {
+        return hash_eight_chunk_subtree(
+            &input[0 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            &input[1 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            &input[2 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            &input[3 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            &input[4 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            &input[5 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            &input[6 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            &input[7 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
+            finalization,
+        );
+    }
+    let (left, right) = input.split_at(large_left_len(input.len()));
+    let (left_hash, right_hash) = join(
+        || bao_large_chunks_recurse(left, NotRoot),
+        || bao_large_chunks_recurse(right, NotRoot),
+    );
+    hash_parent(&left_hash, &right_hash, finalization)
+}
+
+pub fn bao_large_chunks(input: &[u8]) -> Hash {
+    bao_large_chunks_recurse(input, Root)
+}
+
 const OUT_BUF_LEN: usize = 2 * MAX_DEGREE * HASH_SIZE;
 type JobsVec<'a> = ArrayVec<[HashManyJob<'a>; MAX_DEGREE]>;
 
@@ -285,40 +326,6 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
         }
         n = n / 2 + (n % 2) as usize;
     }
-}
-
-// Modified Bao using LARGE_CHUNK_SIZE. This provides a reference point for
-// extremely low parent node overhead, though it probably wouldn't be practical
-// to use such large chunks in the standard.
-fn bao_large_chunks_recurse(input: &[u8], finalization: Finalization) -> Hash {
-    if input.len() <= LARGE_CHUNK_SIZE {
-        return hash_chunk(input, finalization);
-    }
-    // Special case: If the input is exactly 8 chunks, hashing those 8
-    // chunks in parallel with SIMD is more efficient than going one by one.
-    if input.len() == 8 * LARGE_CHUNK_SIZE {
-        return hash_eight_chunk_subtree(
-            &input[0 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[1 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[2 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[3 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[4 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[5 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[6 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[7 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            finalization,
-        );
-    }
-    let (left, right) = input.split_at(left_len(input.len()));
-    let (left_hash, right_hash) = join(
-        || bao_large_chunks_recurse(left, NotRoot),
-        || bao_large_chunks_recurse(right, NotRoot),
-    );
-    hash_parent(&left_hash, &right_hash, finalization)
-}
-
-pub fn bao_large_chunks(input: &[u8]) -> Hash {
-    bao_large_chunks_recurse(input, Root)
 }
 
 #[cfg(test)]
