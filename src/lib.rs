@@ -1,11 +1,12 @@
 use arrayref::{array_mut_ref, array_ref};
-use arrayvec::ArrayVec;
+use arrayvec::{ArrayString, ArrayVec};
 use blake2s_simd::{
-    many::{HashManyJob, MAX_DEGREE},
-    Hash, Params,
+    many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE},
+    Params,
 };
 use rand::seq::SliceRandom;
 use rand::RngCore;
+use std::fmt;
 
 #[cfg(not(feature = "single"))]
 use rayon::join;
@@ -23,6 +24,66 @@ const HASH_SIZE: usize = 32;
 const CHUNK_SIZE: usize = 4096;
 const LARGE_CHUNK_SIZE: usize = 65536;
 pub const BENCH_LENGTH: usize = 1 << 24; // about 17 MB
+
+#[derive(Clone, Copy)]
+pub struct Hash {
+    bytes: [u8; HASH_SIZE],
+}
+
+impl Hash {
+    /// Create a new `Hash` from an array of bytes.
+    pub fn new(bytes: [u8; HASH_SIZE]) -> Self {
+        Self { bytes }
+    }
+
+    /// Convert the `Hash` to a byte array. Note that the array type doesn't provide constant time
+    /// equality.
+    pub fn as_bytes(&self) -> &[u8; HASH_SIZE] {
+        &self.bytes
+    }
+
+    /// Convert the `Hash` to a lowercase hexadecimal
+    /// [`ArrayString`](https://docs.rs/arrayvec/0.4/arrayvec/struct.ArrayString.html).
+    pub fn to_hex(&self) -> ArrayString<[u8; 2 * HASH_SIZE]> {
+        let mut s = ArrayString::new();
+        let table = b"0123456789abcdef";
+        for &b in self.bytes.iter() {
+            s.push(table[(b >> 4) as usize] as char);
+            s.push(table[(b & 0xf) as usize] as char);
+        }
+        s
+    }
+}
+
+/// This implementation is constant time.
+impl PartialEq for Hash {
+    fn eq(&self, other: &Hash) -> bool {
+        constant_time_eq::constant_time_eq(&self.bytes[..], &other.bytes[..])
+    }
+}
+
+/// This implementation is constant time, if the slice length is `HASH_SIZE`.
+impl PartialEq<[u8]> for Hash {
+    fn eq(&self, other: &[u8]) -> bool {
+        constant_time_eq::constant_time_eq(&self.bytes[..], other)
+    }
+}
+
+impl Eq for Hash {}
+
+impl fmt::Debug for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Hash(0x{})", self.to_hex())
+    }
+}
+
+impl From<blake2s_simd::Hash> for Hash {
+    fn from(hash: blake2s_simd::Hash) -> Hash {
+        Hash {
+            bytes: *array_ref!(hash.as_bytes(), 0, HASH_SIZE),
+        }
+    }
+}
 
 // This struct randomizes two things:
 // 1. The actual bytes of input.
@@ -75,7 +136,7 @@ fn left_len(content_len: usize) -> usize {
     largest_power_of_two_leq(full_chunks) * CHUNK_SIZE
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Finalization {
     NotRoot,
     Root,
@@ -94,42 +155,41 @@ fn common_params() -> Params {
     params
 }
 
-fn chunk_params() -> Params {
+fn chunk_params(finalization: Finalization) -> Params {
     let mut params = common_params();
     params.node_depth(0);
+    if Root == finalization {
+        params.last_node(true);
+    }
     params
 }
 
-fn parent_params() -> Params {
+fn parent_params(finalization: Finalization) -> Params {
     let mut params = common_params();
     params.node_depth(1);
+    if Root == finalization {
+        params.last_node(true);
+    }
     params
 }
 
 fn hash_chunk(chunk: &[u8], finalization: Finalization) -> Hash {
-    let mut params = chunk_params();
-    if let Root = finalization {
-        params.last_node(true);
-    }
-    params.hash(chunk)
+    chunk_params(finalization).hash(chunk).into()
 }
 
 fn hash_parent(left: &Hash, right: &Hash, finalization: Finalization) -> Hash {
-    let mut state = parent_params().to_state();
-    if let Root = finalization {
-        state.set_last_node(true);
-    }
+    let mut state = parent_params(finalization).to_state();
     state.update(left.as_bytes());
     state.update(right.as_bytes());
-    state.finalize()
+    state.finalize().into()
 }
 
 fn hash_parent_buf(buf: &[u8; 2 * HASH_SIZE], finalization: Finalization) -> Hash {
-    let mut params = parent_params();
+    let mut params = parent_params(finalization);
     if let Root = finalization {
         params.last_node(true);
     }
-    params.hash(buf)
+    params.hash(buf).into()
 }
 
 fn hash_eight_chunk_subtree(
@@ -144,7 +204,7 @@ fn hash_eight_chunk_subtree(
     finalization: Finalization,
 ) -> Hash {
     // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let params = chunk_params();
+    let params = chunk_params(NotRoot);
     let mut jobs = [
         HashManyJob::new(&params, chunk0),
         HashManyJob::new(&params, chunk1),
@@ -157,10 +217,26 @@ fn hash_eight_chunk_subtree(
     ];
     blake2s_simd::many::hash_many(jobs.iter_mut());
 
-    let double0 = hash_parent(&jobs[0].to_hash(), &jobs[1].to_hash(), NotRoot);
-    let double1 = hash_parent(&jobs[2].to_hash(), &jobs[3].to_hash(), NotRoot);
-    let double2 = hash_parent(&jobs[4].to_hash(), &jobs[5].to_hash(), NotRoot);
-    let double3 = hash_parent(&jobs[6].to_hash(), &jobs[7].to_hash(), NotRoot);
+    let double0 = hash_parent(
+        &jobs[0].to_hash().into(),
+        &jobs[1].to_hash().into(),
+        NotRoot,
+    );
+    let double1 = hash_parent(
+        &jobs[2].to_hash().into(),
+        &jobs[3].to_hash().into(),
+        NotRoot,
+    );
+    let double2 = hash_parent(
+        &jobs[4].to_hash().into(),
+        &jobs[5].to_hash().into(),
+        NotRoot,
+    );
+    let double3 = hash_parent(
+        &jobs[6].to_hash().into(),
+        &jobs[7].to_hash().into(),
+        NotRoot,
+    );
 
     let quad0 = hash_parent(&double0, &double1, NotRoot);
     let quad1 = hash_parent(&double2, &double3, NotRoot);
@@ -242,18 +318,25 @@ pub fn bao_large_chunks(input: &[u8]) -> Hash {
     bao_large_chunks_recurse(input, Root)
 }
 
-const OUT_BUF_LEN: usize = 2 * MAX_DEGREE * HASH_SIZE;
-type JobsVec<'a> = ArrayVec<[HashManyJob<'a>; MAX_DEGREE]>;
+const OUT_BUF_LEN: usize = MAX_SIMD_DEGREE * HASH_SIZE;
+type JobsVec<'a> = ArrayVec<[HashManyJob<'a>; MAX_SIMD_DEGREE]>;
 
 // Another approach to standard Bao. This implementation uses SIMD even when
 // hashing parent nodes, to further cut down on overhead without changing the
 // output.
-fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_BUF_LEN]) -> usize {
+fn bao_parallel_parents_recurse(
+    input: &[u8],
+    simd_degree: usize,
+    out: &mut [u8; OUT_BUF_LEN],
+) -> usize {
+    // BUG! This is not yet correct for simd_degree == 1;
+    debug_assert!(simd_degree > 1);
+
     // The top level handles the empty case.
     debug_assert!(input.len() > 0);
 
-    if input.len() <= degree * CHUNK_SIZE {
-        let chunk_params = chunk_params();
+    if input.len() <= simd_degree * CHUNK_SIZE {
+        let chunk_params = chunk_params(NotRoot);
         let mut jobs = JobsVec::new();
         for chunk in input.chunks(CHUNK_SIZE) {
             jobs.push(HashManyJob::new(&chunk_params, chunk));
@@ -269,11 +352,11 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_
     let mut left_out = [0; OUT_BUF_LEN];
     let mut right_out = [0; OUT_BUF_LEN];
     let (left_n, right_n) = join(
-        || bao_parallel_parents_recurse(left_input, degree, &mut left_out),
-        || bao_parallel_parents_recurse(right_input, degree, &mut right_out),
+        || bao_parallel_parents_recurse(left_input, simd_degree, &mut left_out),
+        || bao_parallel_parents_recurse(right_input, simd_degree, &mut right_out),
     );
-    debug_assert_eq!(degree, left_n, "left subtree always full");
-    let parent_params = parent_params();
+    debug_assert_eq!(simd_degree, left_n, "left subtree always full");
+    let parent_params = parent_params(NotRoot);
     let mut jobs = JobsVec::new();
     let left_parent_bufs = left_out.chunks_exact(2 * HASH_SIZE).take(left_n / 2);
     let right_parent_bufs = right_out.chunks_exact(2 * HASH_SIZE).take(right_n / 2);
@@ -286,7 +369,7 @@ fn bao_parallel_parents_recurse(input: &[u8], degree: usize, out: &mut [u8; OUT_
     }
 
     // If there's a right child left over, copy it to the level above.
-    let num_outputs = degree / 2 + (right_n + 1) / 2;
+    let num_outputs = simd_degree / 2 + (right_n + 1) / 2;
     if right_n % 2 == 1 {
         let last_child = &right_out[(right_n - 1) * HASH_SIZE..][..HASH_SIZE];
         let last_output = &mut out[(num_outputs - 1) * HASH_SIZE..][..HASH_SIZE];
@@ -328,6 +411,211 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     }
 }
 
+const MAX_TREE_DEGREE: usize = 8;
+
+// Do one round of constructing and hashing parent hashes. The rule for
+// leftover children is that if there's exactly one leftover child, it gets
+// raised to the level above, but any larger number of leftover children get
+// combined into a partial parent node. Most of the time this will be called
+// with simd_degree*tree_degree children, if there's enough input, but it also
+// gets reused in a loop at the root level to join everything into the root
+// hash.
+fn bao_nary_hash_parents(
+    children: &[u8],
+    finalization: Finalization,
+    tree_degree: usize,
+    out: &mut [u8],
+) -> usize {
+    // finalization=Root means that the current set of children will form the
+    // top of the tree, but we can't actually apply Root finalization until we
+    // get to the very top node.
+    debug_assert_eq!(children.len() % HASH_SIZE, 0);
+    let actual_finalization = if children.len() / HASH_SIZE <= tree_degree {
+        finalization
+    } else {
+        NotRoot
+    };
+    let params = parent_params(actual_finalization);
+    let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
+    let mut leftover_child: Option<&[u8; HASH_SIZE]> = None;
+    let mut groups = 0;
+    for child_group in children.chunks(tree_degree * HASH_SIZE) {
+        if child_group.len() == HASH_SIZE {
+            // The single leftover child case.
+            leftover_child = Some(array_ref!(child_group, 0, HASH_SIZE))
+        } else {
+            jobs.push(HashManyJob::new(&params, child_group))
+        }
+        groups += 1;
+    }
+    blake2s_simd::many::hash_many(&mut jobs);
+    let mut out_hashes = out.chunks_exact_mut(HASH_SIZE);
+    for (job, out_hash) in jobs.iter().zip(&mut out_hashes) {
+        job.write_output(array_mut_ref!(out_hash, 0, HASH_SIZE));
+    }
+    // The single leftover child case again.
+    if let (Some(child), Some(out_hash)) = (leftover_child, out_hashes.next()) {
+        out_hash.copy_from_slice(child);
+    }
+    groups
+}
+
+// Returns the number of hashes written to `out`. The caller handles the single
+// chunk case (including the empty input), so finalization applies only if
+// simd_degree == 1.
+fn bao_nary_recurse(
+    input: &[u8],
+    finalization: Finalization,
+    tree_degree: usize,
+    simd_degree: usize,
+    out: &mut [u8],
+) -> usize {
+    // The top level handles the empty case.
+    debug_assert!(input.len() > 0);
+
+    // If we've reached the number of chunks we want to hash at once, do that.
+    if input.len() <= simd_degree * CHUNK_SIZE {
+        let params = chunk_params(finalization);
+        let mut jobs = JobsVec::new();
+        for chunk in input.chunks(CHUNK_SIZE) {
+            jobs.push(HashManyJob::new(&params, chunk));
+        }
+        blake2s_simd::many::hash_many(jobs.iter_mut());
+        for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
+            job.write_output(array_mut_ref!(dest, 0, HASH_SIZE));
+        }
+        return jobs.len();
+    }
+
+    // Otherwise, split in two (not tree_degree!) and recurse. What we want to
+    // do is accumulate simd_degree*tree_degree child hashes, so that we can
+    // take full advantage of SIMD to hash tree_degree parent nodes at the same
+    // time. If we get too few (that is, half or less of what we wanted), we
+    // just copy what we got directly to the out buffer and let our caller
+    // accumulate more.
+    //
+    // The expected behavior here depends on the value of tree_degree. For
+    // tree_degree=2, no recursive call will ever short-circuit to the caller.
+    // For tree_degree=4, every other recursive call going down the stack will
+    // short-circuit. For tree_degree=8, every third call, and so one.
+    //
+    // An alternative to this behavior would be to do a tree_degree-way split
+    // rather than always doing a 2-way split, maybe avoiding some extra copies
+    // and stack frames. The downside of that approach is that these larger
+    // splits aren't guaranteed to make good use of SIMD when simd_degree isn't
+    // an even power of tree_degree. For example, if simd_degree=8 and
+    // tree_degree=4, consider what happens to a 9-chunk input. 9 is bigger
+    // than 8, so we compute the size of each child (the largest power of 4
+    // less than the input) and split the input into 4-4-1 chunks, recursing 3
+    // ways (not having enough chunks to make a 4th child). But now none of the
+    // branches are big enough to take advantage of 8-way SIMD. What we want to
+    // happen in this case is for the chunks to get split 8-1 for individual
+    // hashing, and *then* to be combined 4-4-1 into parents in the caller.
+    //
+    // Splitting 2 ways takes full advantage of SIMD automatically, assuming
+    // simd_degree is always a power of 2. It also makes the recursion a lot
+    // easier to write, because at any higher degree the number of recursive
+    // calls we make isn't constant (in an incomplete tree with tree_degree >
+    // 2, not every parent node is full).
+    debug_assert_eq!(simd_degree.count_ones(), 1, "power of two");
+    debug_assert_eq!(MAX_SIMD_DEGREE.count_ones(), 1, "power of two");
+    debug_assert_eq!(tree_degree.count_ones(), 1, "power of two");
+    debug_assert_eq!(MAX_TREE_DEGREE.count_ones(), 1, "power of two");
+    let (left_input, right_input) = input.split_at(left_len(input.len()));
+    let mut children_array = [0; MAX_TREE_DEGREE * MAX_SIMD_DEGREE * HASH_SIZE];
+    let children_wanted = tree_degree * simd_degree;
+    let out_slice_len = children_wanted / 2 * HASH_SIZE;
+    debug_assert!(out_slice_len <= children_array.len() / 2);
+    let (left_child_out, right_child_out) = children_array.split_at_mut(out_slice_len);
+    let (left_n, right_n) = rayon::join(
+        || {
+            bao_nary_recurse(
+                left_input,
+                NotRoot,
+                tree_degree,
+                simd_degree,
+                left_child_out,
+            )
+        },
+        || {
+            bao_nary_recurse(
+                right_input,
+                NotRoot,
+                tree_degree,
+                simd_degree,
+                right_child_out,
+            )
+        },
+    );
+    let num_children = left_n + right_n;
+
+    // As described above, if we got half or less of what we wanted, just give
+    // everything to the caller.
+    if num_children <= children_wanted / 2 {
+        let (left_parent_out, right_parent_out) = out.split_at_mut(left_n * HASH_SIZE);
+        left_parent_out.copy_from_slice(&left_child_out[..left_n * HASH_SIZE]);
+        right_parent_out[..right_n * HASH_SIZE]
+            .copy_from_slice(&right_child_out[..right_n * HASH_SIZE]);
+        return num_children;
+    }
+
+    // If we didn't short-circuit above for having too few children, then we
+    // need to join parent nodes. In this case, we know the left side filled
+    // the left_child_out slice, so all the child hashes are arranged
+    // contiguously in children_array. Note that if simd_degree=1, this might
+    // finalize, and the root caller must pass in finalization=Root in that
+    // case.
+    debug_assert_eq!(left_n, children_wanted / 2, "left subtree complete");
+    let children_slice = &children_array[..num_children * HASH_SIZE];
+    bao_nary_hash_parents(children_slice, finalization, tree_degree, out)
+}
+
+pub fn bao_nary(input: &[u8], tree_degree: usize) -> Hash {
+    // Assert the invariants here at the top. Hopefully this helps the
+    // optimizer elide some bounds checks in the recursive calls, but I haven't
+    // verified this.
+    assert!(tree_degree <= MAX_TREE_DEGREE);
+    let simd_degree = blake2s_simd::many::degree();
+    assert!(simd_degree <= MAX_SIMD_DEGREE);
+
+    // Handle the single chunk case explicitly.
+    if input.len() <= CHUNK_SIZE {
+        return hash_chunk(input, Root);
+    }
+
+    // If simd_degree=1, the recursive call will take care of finalization.
+    // Otherwise we'll do it below.
+    let finalization = if simd_degree == 1 { Root } else { NotRoot };
+    let mut children_array = [0; MAX_TREE_DEGREE * MAX_SIMD_DEGREE * HASH_SIZE];
+    let mut num_children = bao_nary_recurse(
+        input,
+        finalization,
+        tree_degree,
+        simd_degree,
+        &mut children_array,
+    );
+    if simd_degree == 1 {
+        debug_assert_eq!(num_children, 1);
+    } else {
+        debug_assert!(num_children > 1);
+    }
+
+    // Now we need to combine child_hashes into parent nodes until we're left
+    // with the single root hash, then return that.
+    loop {
+        if num_children == 1 {
+            return Hash {
+                bytes: *array_ref!(children_array, 0, HASH_SIZE),
+            };
+        }
+        let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+        let children_slice = &children_array[..num_children * HASH_SIZE];
+        let out_n = bao_nary_hash_parents(children_slice, Root, tree_degree, &mut out_array);
+        children_array[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
+        num_children = out_n;
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -355,13 +643,26 @@ mod test {
         assert_eq!(expected, &*hash.to_hex());
     }
 
+    const CASES: &[usize] = &[0, 1, CHUNK_SIZE, CHUNK_SIZE + 1, 1_000_000];
+
     #[test]
     fn test_parallel_parents() {
-        for &len in &[0, 1, CHUNK_SIZE, CHUNK_SIZE + 1, 1_000_000] {
+        for &len in CASES {
             eprintln!("case {}", len);
             let input = vec![0; len];
             let expected = bao_standard(&input).to_hex();
             let hash = bao_parallel_parents(&input);
+            assert_eq!(expected, hash.to_hex());
+        }
+    }
+
+    #[test]
+    fn test_nary_2() {
+        for &len in CASES {
+            eprintln!("case {}", len);
+            let input = vec![0; len];
+            let expected = bao_standard(&input).to_hex();
+            let hash = bao_nary(&input, 2);
             assert_eq!(expected, hash.to_hex());
         }
     }
