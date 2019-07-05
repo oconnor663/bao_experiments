@@ -411,7 +411,7 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     }
 }
 
-const MAX_TREE_DEGREE: usize = 8;
+const MAX_TREE_DEGREE: usize = 64;
 
 // Do one round of constructing and hashing parent hashes. The rule for
 // leftover children is that if there's exactly one leftover child, it gets
