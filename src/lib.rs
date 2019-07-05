@@ -570,6 +570,9 @@ fn bao_nary_recurse(
     bao_nary_hash_parents(children_slice, finalization, tree_degree, out)
 }
 
+// Note that a real nary design would change the value of the fanout BLAKE2
+// parameter. But because this is just a performance experiment, we don't
+// bother.
 pub fn bao_nary(input: &[u8], tree_degree: usize) -> Hash {
     // Assert the invariants here at the top. Hopefully this helps the
     // optimizer elide some bounds checks in the recursive calls, but I haven't
@@ -665,5 +668,74 @@ mod test {
             let hash = bao_nary(&input, 2);
             assert_eq!(expected, hash.to_hex());
         }
+    }
+
+    fn nary_parent_hash(children: &[Hash], finalization: Finalization) -> Hash {
+        let mut state = parent_params(finalization).to_state();
+        for child in children {
+            state.update(child.as_bytes());
+        }
+        state.finalize().into()
+    }
+
+    #[test]
+    fn test_nary_4() {
+        const NARY: usize = 4;
+        let chunk = &[0; CHUNK_SIZE];
+        let chunk_hash = hash_chunk(chunk, NotRoot);
+
+        // The 4 chunk case.
+        let four_expected_root = nary_parent_hash(&[chunk_hash; 4], Root);
+        assert_eq!(four_expected_root, bao_nary(&[0; 4 * CHUNK_SIZE], NARY));
+
+        // The 5 chunk case.
+        let four_chunks_hash = nary_parent_hash(&[chunk_hash; 4], NotRoot);
+        let five_expected_root = nary_parent_hash(&[four_chunks_hash, chunk_hash], Root);
+        assert_eq!(five_expected_root, bao_nary(&[0; 5 * CHUNK_SIZE], NARY));
+
+        // The 6 chunk case.
+        let two_chunks_hash = nary_parent_hash(&[chunk_hash; 2], NotRoot);
+        let six_expected_root = nary_parent_hash(&[four_chunks_hash, two_chunks_hash], Root);
+        assert_eq!(six_expected_root, bao_nary(&[0; 6 * CHUNK_SIZE], NARY));
+
+        // The 7 chunk case.
+        let three_chunks_hash = nary_parent_hash(&[chunk_hash; 3], NotRoot);
+        let seven_expected_root = nary_parent_hash(&[four_chunks_hash, three_chunks_hash], Root);
+        assert_eq!(seven_expected_root, bao_nary(&[0; 7 * CHUNK_SIZE], NARY));
+
+        // The 8 chunk case.
+        let eight_expected_root = nary_parent_hash(&[four_chunks_hash, four_chunks_hash], Root);
+        assert_eq!(eight_expected_root, bao_nary(&[0; 8 * CHUNK_SIZE], NARY));
+
+        // The 9 chunk case.
+        let nine_expected_root =
+            nary_parent_hash(&[four_chunks_hash, four_chunks_hash, chunk_hash], Root);
+        assert_eq!(nine_expected_root, bao_nary(&[0; 9 * CHUNK_SIZE], NARY));
+
+        // The 10 chunk case.
+        let ten_expected_root =
+            nary_parent_hash(&[four_chunks_hash, four_chunks_hash, two_chunks_hash], Root);
+        assert_eq!(ten_expected_root, bao_nary(&[0; 10 * CHUNK_SIZE], NARY));
+    }
+
+    #[test]
+    fn test_nary_8() {
+        const NARY: usize = 8;
+        let chunk = &[0; CHUNK_SIZE];
+        let chunk_hash = hash_chunk(chunk, NotRoot);
+
+        // The 8 chunk case.
+        let eight_expected_root = nary_parent_hash(&[chunk_hash; 8], Root);
+        assert_eq!(eight_expected_root, bao_nary(&[0; 8 * CHUNK_SIZE], NARY));
+
+        // The 9 chunk case.
+        let eight_chunks_hash = nary_parent_hash(&[chunk_hash; 8], NotRoot);
+        let nine_expected_root = nary_parent_hash(&[eight_chunks_hash, chunk_hash], Root);
+        assert_eq!(nine_expected_root, bao_nary(&[0; 9 * CHUNK_SIZE], NARY));
+
+        // The 10 chunk case.
+        let two_chunks_hash = nary_parent_hash(&[chunk_hash; 2], NotRoot);
+        let ten_expected_root = nary_parent_hash(&[eight_chunks_hash, two_chunks_hash], Root);
+        assert_eq!(ten_expected_root, bao_nary(&[0; 10 * CHUNK_SIZE], NARY));
     }
 }
