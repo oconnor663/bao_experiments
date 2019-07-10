@@ -343,7 +343,7 @@ fn bao_parallel_parents_recurse(
         }
         blake2s_simd::many::hash_many(jobs.iter_mut());
         for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
-            job.write_output(array_mut_ref!(dest, 0, HASH_SIZE));
+            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
         }
         return jobs.len();
     }
@@ -365,7 +365,7 @@ fn bao_parallel_parents_recurse(
     }
     blake2s_simd::many::hash_many(jobs.iter_mut());
     for (job, out_buf) in jobs.iter().zip(out.chunks_exact_mut(HASH_SIZE)) {
-        job.write_output(array_mut_ref!(out_buf, 0, HASH_SIZE));
+        *array_mut_ref!(out_buf, 0, HASH_SIZE) = *job.to_hash().as_array();
     }
 
     // If there's a right child left over, copy it to the level above.
@@ -451,7 +451,7 @@ fn bao_nary_hash_parents(
     blake2s_simd::many::hash_many(&mut jobs);
     let mut out_hashes = out.chunks_exact_mut(HASH_SIZE);
     for (job, out_hash) in jobs.iter().zip(&mut out_hashes) {
-        job.write_output(array_mut_ref!(out_hash, 0, HASH_SIZE));
+        *array_mut_ref!(out_hash, 0, HASH_SIZE) = *job.to_hash().as_array();
     }
     // The single leftover child case again.
     if let (Some(child), Some(out_hash)) = (leftover_child, out_hashes.next()) {
@@ -482,7 +482,7 @@ fn bao_nary_recurse(
         }
         blake2s_simd::many::hash_many(jobs.iter_mut());
         for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
-            job.write_output(array_mut_ref!(dest, 0, HASH_SIZE));
+            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
         }
         return jobs.len();
     }
