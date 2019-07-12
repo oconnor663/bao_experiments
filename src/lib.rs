@@ -184,14 +184,6 @@ fn hash_parent(left: &Hash, right: &Hash, finalization: Finalization) -> Hash {
     state.finalize().into()
 }
 
-fn hash_parent_buf(buf: &[u8; 2 * HASH_SIZE], finalization: Finalization) -> Hash {
-    let mut params = parent_params(finalization);
-    if let Root = finalization {
-        params.last_node(true);
-    }
-    params.hash(buf).into()
-}
-
 fn hash_eight_chunk_subtree(
     chunk0: &[u8],
     chunk1: &[u8],
@@ -318,24 +310,62 @@ pub fn bao_large_chunks(input: &[u8]) -> Hash {
     bao_large_chunks_recurse(input, Root)
 }
 
-const OUT_BUF_LEN: usize = MAX_SIMD_DEGREE * HASH_SIZE;
 type JobsVec<'a> = ArrayVec<[HashManyJob<'a>; MAX_SIMD_DEGREE]>;
+
+// Do one round of constructing and hashing parent hashes.
+fn bao_parallel_parents_hash_parents(
+    children: &[u8],
+    finalization: Finalization,
+    out: &mut [u8],
+) -> usize {
+    debug_assert_eq!(children.len() % HASH_SIZE, 0);
+    // finalization=Root means that the current set of children will form the
+    // top of the tree, but we can't actually apply Root finalization until we
+    // get to the very top node.
+    let actual_finalization = if children.len() == 2 * HASH_SIZE {
+        finalization
+    } else {
+        NotRoot
+    };
+    let params = parent_params(actual_finalization);
+    let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
+    let mut pairs = children.chunks_exact(2 * HASH_SIZE);
+    for pair in &mut pairs {
+        jobs.push(HashManyJob::new(&params, pair))
+    }
+    blake2s_simd::many::hash_many(&mut jobs);
+    let mut out_hashes = out.chunks_exact_mut(HASH_SIZE);
+    let mut outputs = 0;
+    for (job, out_hash) in jobs.iter().zip(&mut out_hashes) {
+        *array_mut_ref!(out_hash, 0, HASH_SIZE) = *job.to_hash().as_array();
+        outputs += 1;
+    }
+    // The leftover child case.
+    let leftover = pairs.remainder();
+    if leftover.len() == HASH_SIZE {
+        if let Some(out_hash) = out_hashes.next() {
+            *array_mut_ref!(out_hash, 0, HASH_SIZE) = *array_ref!(leftover, 0, HASH_SIZE);
+            outputs += 1;
+        }
+    }
+    outputs
+}
 
 // Another approach to standard Bao. This implementation uses SIMD even when
 // hashing parent nodes, to further cut down on overhead without changing the
 // output.
 fn bao_parallel_parents_recurse(
     input: &[u8],
+    finalization: Finalization,
     simd_degree: usize,
-    out: &mut [u8; OUT_BUF_LEN],
+    out: &mut [u8],
 ) -> usize {
-    // BUG! This is not yet correct for simd_degree == 1;
-    debug_assert!(simd_degree > 1);
-
-    // The top level handles the empty case.
+    // The top level handles the one chunk case.
     debug_assert!(input.len() > 0);
 
     if input.len() <= simd_degree * CHUNK_SIZE {
+        // Because the top level handles the one chunk case, chunk hashing is
+        // never Root.
         let chunk_params = chunk_params(NotRoot);
         let mut jobs = JobsVec::new();
         for chunk in input.chunks(CHUNK_SIZE) {
@@ -349,34 +379,18 @@ fn bao_parallel_parents_recurse(
     }
 
     let (left_input, right_input) = input.split_at(left_len(input.len()));
-    let mut left_out = [0; OUT_BUF_LEN];
-    let mut right_out = [0; OUT_BUF_LEN];
+    let mut child_out_array = [0; 2 * MAX_SIMD_DEGREE * HASH_SIZE];
+    let (left_out, right_out) = child_out_array.split_at_mut(simd_degree * HASH_SIZE);
     let (left_n, right_n) = join(
-        || bao_parallel_parents_recurse(left_input, simd_degree, &mut left_out),
-        || bao_parallel_parents_recurse(right_input, simd_degree, &mut right_out),
+        || bao_parallel_parents_recurse(left_input, NotRoot, simd_degree, left_out),
+        || bao_parallel_parents_recurse(right_input, NotRoot, simd_degree, right_out),
     );
+    // This asserts that the left_out slice was filled, which means all the
+    // child hashes are laid out contiguously.
     debug_assert_eq!(simd_degree, left_n, "left subtree always full");
-    let parent_params = parent_params(NotRoot);
-    let mut jobs = JobsVec::new();
-    let left_parent_bufs = left_out.chunks_exact(2 * HASH_SIZE).take(left_n / 2);
-    let right_parent_bufs = right_out.chunks_exact(2 * HASH_SIZE).take(right_n / 2);
-    for in_buf in left_parent_bufs.chain(right_parent_bufs) {
-        jobs.push(HashManyJob::new(&parent_params, in_buf));
-    }
-    blake2s_simd::many::hash_many(jobs.iter_mut());
-    for (job, out_buf) in jobs.iter().zip(out.chunks_exact_mut(HASH_SIZE)) {
-        *array_mut_ref!(out_buf, 0, HASH_SIZE) = *job.to_hash().as_array();
-    }
-
-    // If there's a right child left over, copy it to the level above.
-    let num_outputs = simd_degree / 2 + (right_n + 1) / 2;
-    if right_n % 2 == 1 {
-        let last_child = &right_out[(right_n - 1) * HASH_SIZE..][..HASH_SIZE];
-        let last_output = &mut out[(num_outputs - 1) * HASH_SIZE..][..HASH_SIZE];
-        last_output.copy_from_slice(last_child);
-    }
-
-    num_outputs
+    let num_children = left_n + right_n;
+    let children_slice = &child_out_array[..num_children * HASH_SIZE];
+    bao_parallel_parents_hash_parents(children_slice, finalization, out)
 }
 
 pub fn bao_parallel_parents(input: &[u8]) -> Hash {
@@ -384,30 +398,28 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk(input, Root);
     }
-    let mut out = [0; OUT_BUF_LEN];
-    let mut n = bao_parallel_parents_recurse(input, blake2s_simd::many::degree(), &mut out);
-    debug_assert!(n > 1);
+    let simd_degree = blake2s_simd::many::degree();
+    let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+    let mut num_children =
+        bao_parallel_parents_recurse(input, Root, simd_degree, &mut children_array);
+    if simd_degree == 1 {
+        debug_assert_eq!(num_children, 1);
+    } else {
+        debug_assert!(num_children > 1);
+    }
+    // Now we need to combine child_hashes into parent nodes until we're left
+    // with the single root hash, then return that.
     loop {
-        if n == 2 {
-            return hash_parent_buf(array_ref!(out, 0, 2 * HASH_SIZE), Root);
+        if num_children == 1 {
+            return Hash {
+                bytes: *array_ref!(children_array, 0, HASH_SIZE),
+            };
         }
-        let mut i = 0;
-        while i < n {
-            let offset = i * HASH_SIZE;
-            if i + 1 < n {
-                // Join two child hashes into one parent hash and write the
-                // result back in place.
-                let parent_hash = hash_parent_buf(array_ref!(&out, offset, 2 * HASH_SIZE), NotRoot);
-                array_mut_ref!(&mut out, offset / 2, HASH_SIZE)
-                    .copy_from_slice(parent_hash.as_bytes());
-            } else {
-                // Copy the leftover child hash.
-                let last_hash = *array_ref!(&out, offset, HASH_SIZE);
-                *array_mut_ref!(&mut out, offset / 2, HASH_SIZE) = last_hash;
-            }
-            i += 2;
-        }
-        n = n / 2 + (n % 2) as usize;
+        let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE / 2];
+        let children_slice = &children_array[..num_children * HASH_SIZE];
+        let out_n = bao_parallel_parents_hash_parents(children_slice, Root, &mut out_array);
+        children_array[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
+        num_children = out_n;
     }
 }
 
@@ -470,15 +482,17 @@ fn bao_nary_recurse(
     simd_degree: usize,
     out: &mut [u8],
 ) -> usize {
-    // The top level handles the empty case.
+    // The top level handles the one chunk case.
     debug_assert!(input.len() > 0);
 
     // If we've reached the number of chunks we want to hash at once, do that.
     if input.len() <= simd_degree * CHUNK_SIZE {
-        let params = chunk_params(finalization);
+        // Because the top level handles the one chunk case, chunk hashing is
+        // never Root.
+        let chunk_params = chunk_params(NotRoot);
         let mut jobs = JobsVec::new();
         for chunk in input.chunks(CHUNK_SIZE) {
-            jobs.push(HashManyJob::new(&params, chunk));
+            jobs.push(HashManyJob::new(&chunk_params, chunk));
         }
         blake2s_simd::many::hash_many(jobs.iter_mut());
         for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
