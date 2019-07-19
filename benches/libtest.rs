@@ -30,45 +30,10 @@ fn bench_bao_large_chunks(b: &mut Bencher) {
 }
 
 #[bench]
-fn bench_bao_nary_02(b: &mut Bencher) {
+fn bench_bao_nary(b: &mut Bencher) {
     b.bytes = BENCH_LENGTH as u64;
     let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_nary(input.get(), 2));
-}
-
-#[bench]
-fn bench_bao_nary_04(b: &mut Bencher) {
-    b.bytes = BENCH_LENGTH as u64;
-    let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_nary(input.get(), 4));
-}
-
-#[bench]
-fn bench_bao_nary_08(b: &mut Bencher) {
-    b.bytes = BENCH_LENGTH as u64;
-    let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_nary(input.get(), 8));
-}
-
-#[bench]
-fn bench_bao_nary_16(b: &mut Bencher) {
-    b.bytes = BENCH_LENGTH as u64;
-    let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_nary(input.get(), 16));
-}
-
-#[bench]
-fn bench_bao_nary_32(b: &mut Bencher) {
-    b.bytes = BENCH_LENGTH as u64;
-    let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_nary(input.get(), 32));
-}
-
-#[bench]
-fn bench_bao_nary_64(b: &mut Bencher) {
-    b.bytes = BENCH_LENGTH as u64;
-    let mut input = RandomInput::new(BENCH_LENGTH);
-    b.iter(|| bao_nary(input.get(), 64));
+    b.iter(|| bao_nary(input.get()));
 }
 
 #[bench]

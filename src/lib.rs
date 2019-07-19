@@ -25,6 +25,9 @@ const CHUNK_SIZE: usize = 4096;
 const LARGE_CHUNK_SIZE: usize = 65536;
 pub const BENCH_LENGTH: usize = 1 << 24; // about 17 MB
 
+// In my testing, 8 seems to be the best for throughput.
+const NARY: usize = 8;
+
 #[derive(Clone, Copy)]
 pub struct Hash {
     bytes: [u8; HASH_SIZE],
@@ -423,8 +426,6 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     }
 }
 
-const MAX_TREE_DEGREE: usize = 64;
-
 // Do one round of constructing and hashing parent hashes. The rule for
 // leftover children is that if there's exactly one leftover child, it gets
 // raised to the level above, but any larger number of leftover children get
@@ -432,17 +433,12 @@ const MAX_TREE_DEGREE: usize = 64;
 // with simd_degree*tree_degree children, if there's enough input, but it also
 // gets reused in a loop at the root level to join everything into the root
 // hash.
-fn bao_nary_hash_parents(
-    children: &[u8],
-    finalization: Finalization,
-    tree_degree: usize,
-    out: &mut [u8],
-) -> usize {
+fn bao_nary_hash_parents(children: &[u8], finalization: Finalization, out: &mut [u8]) -> usize {
     // finalization=Root means that the current set of children will form the
     // top of the tree, but we can't actually apply Root finalization until we
     // get to the very top node.
     debug_assert_eq!(children.len() % HASH_SIZE, 0);
-    let actual_finalization = if children.len() / HASH_SIZE <= tree_degree {
+    let actual_finalization = if children.len() / HASH_SIZE <= NARY {
         finalization
     } else {
         NotRoot
@@ -451,7 +447,7 @@ fn bao_nary_hash_parents(
     let mut jobs: ArrayVec<[HashManyJob; MAX_SIMD_DEGREE]> = ArrayVec::new();
     let mut leftover_child: Option<&[u8; HASH_SIZE]> = None;
     let mut groups = 0;
-    for child_group in children.chunks(tree_degree * HASH_SIZE) {
+    for child_group in children.chunks(NARY * HASH_SIZE) {
         if child_group.len() == HASH_SIZE {
             // The single leftover child case.
             leftover_child = Some(array_ref!(child_group, 0, HASH_SIZE))
@@ -478,7 +474,6 @@ fn bao_nary_hash_parents(
 fn bao_nary_recurse(
     input: &[u8],
     finalization: Finalization,
-    tree_degree: usize,
     simd_degree: usize,
     out: &mut [u8],
 ) -> usize {
@@ -501,65 +496,47 @@ fn bao_nary_recurse(
         return jobs.len();
     }
 
-    // Otherwise, split in two (not tree_degree!) and recurse. What we want to
-    // do is accumulate simd_degree*tree_degree child hashes, so that we can
-    // take full advantage of SIMD to hash tree_degree parent nodes at the same
-    // time. If we get too few (that is, half or less of what we wanted), we
-    // just copy what we got directly to the out buffer and let our caller
-    // accumulate more.
+    // Otherwise, split in two (not NARY!) and recurse. What we want to do is
+    // accumulate simd_degree*NARY child hashes, so that we can take full
+    // advantage of SIMD to hash NARY parent nodes at the same time. If we get
+    // too few (that is, half or less of what we wanted), we just copy what we
+    // got directly to the out buffer and let our caller accumulate more.
     //
-    // The expected behavior here depends on the value of tree_degree. For
-    // tree_degree=2, no recursive call will ever short-circuit to the caller.
-    // For tree_degree=4, every other recursive call going down the stack will
-    // short-circuit. For tree_degree=8, every third call, and so one.
+    // The expected behavior here depends on the value of NARY. For NARY=2, no
+    // recursive call will ever short-circuit to the caller. For NARY=4, every
+    // other recursive call going down the stack will short-circuit. For
+    // NARY=8, every third call, and so one.
     //
-    // An alternative to this behavior would be to do a tree_degree-way split
-    // rather than always doing a 2-way split, maybe avoiding some extra copies
-    // and stack frames. The downside of that approach is that these larger
-    // splits aren't guaranteed to make good use of SIMD when simd_degree isn't
-    // an even power of tree_degree. For example, if simd_degree=8 and
-    // tree_degree=4, consider what happens to a 9-chunk input. 9 is bigger
-    // than 8, so we compute the size of each child (the largest power of 4
-    // less than the input) and split the input into 4-4-1 chunks, recursing 3
-    // ways (not having enough chunks to make a 4th child). But now none of the
-    // branches are big enough to take advantage of 8-way SIMD. What we want to
-    // happen in this case is for the chunks to get split 8-1 for individual
-    // hashing, and *then* to be combined 4-4-1 into parents in the caller.
+    // An alternative to this behavior would be to do a NARY-way split rather
+    // than always doing a 2-way split, maybe avoiding some extra copies and
+    // stack frames. The downside of that approach is that these larger splits
+    // aren't guaranteed to make good use of SIMD when simd_degree isn't an
+    // even power of NARY. For example, if simd_degree=8 and NARY=4, consider
+    // what happens to a 9-chunk input. 9 is bigger than 8, so we compute the
+    // size of each child (the largest power of 4 less than the input) and
+    // split the input into 4-4-1 chunks, recursing 3 ways (not having enough
+    // chunks to make a 4th child). But now none of the branches are big enough
+    // to take advantage of 8-way SIMD. What we want to happen in this case is
+    // for the chunks to get split 8-1 for individual hashing, and *then* to be
+    // combined 4-4-1 into parents in the caller.
     //
     // Splitting 2 ways takes full advantage of SIMD automatically, assuming
     // simd_degree is always a power of 2. It also makes the recursion a lot
     // easier to write, because at any higher degree the number of recursive
-    // calls we make isn't constant (in an incomplete tree with tree_degree >
-    // 2, not every parent node is full).
+    // calls we make isn't constant (in an incomplete tree with NARY > 2, not
+    // every parent node is full).
     debug_assert_eq!(simd_degree.count_ones(), 1, "power of two");
     debug_assert_eq!(MAX_SIMD_DEGREE.count_ones(), 1, "power of two");
-    debug_assert_eq!(tree_degree.count_ones(), 1, "power of two");
-    debug_assert_eq!(MAX_TREE_DEGREE.count_ones(), 1, "power of two");
+    debug_assert_eq!(NARY.count_ones(), 1, "power of two");
     let (left_input, right_input) = input.split_at(left_len(input.len()));
-    let mut children_array = [0; MAX_TREE_DEGREE * MAX_SIMD_DEGREE * HASH_SIZE];
-    let children_wanted = tree_degree * simd_degree;
+    let mut children_array = [0; NARY * MAX_SIMD_DEGREE * HASH_SIZE];
+    let children_wanted = NARY * simd_degree;
     let out_slice_len = children_wanted / 2 * HASH_SIZE;
     debug_assert!(out_slice_len <= children_array.len() / 2);
     let (left_child_out, right_child_out) = children_array.split_at_mut(out_slice_len);
     let (left_n, right_n) = rayon::join(
-        || {
-            bao_nary_recurse(
-                left_input,
-                NotRoot,
-                tree_degree,
-                simd_degree,
-                left_child_out,
-            )
-        },
-        || {
-            bao_nary_recurse(
-                right_input,
-                NotRoot,
-                tree_degree,
-                simd_degree,
-                right_child_out,
-            )
-        },
+        || bao_nary_recurse(left_input, NotRoot, simd_degree, left_child_out),
+        || bao_nary_recurse(right_input, NotRoot, simd_degree, right_child_out),
     );
     let num_children = left_n + right_n;
 
@@ -581,17 +558,16 @@ fn bao_nary_recurse(
     // case.
     debug_assert_eq!(left_n, children_wanted / 2, "left subtree complete");
     let children_slice = &children_array[..num_children * HASH_SIZE];
-    bao_nary_hash_parents(children_slice, finalization, tree_degree, out)
+    bao_nary_hash_parents(children_slice, finalization, out)
 }
 
 // Note that a real nary design would change the value of the fanout BLAKE2
 // parameter. But because this is just a performance experiment, we don't
 // bother.
-pub fn bao_nary(input: &[u8], tree_degree: usize) -> Hash {
+pub fn bao_nary(input: &[u8]) -> Hash {
     // Assert the invariants here at the top. Hopefully this helps the
     // optimizer elide some bounds checks in the recursive calls, but I haven't
     // verified this.
-    assert!(tree_degree <= MAX_TREE_DEGREE);
     let simd_degree = blake2s_simd::many::degree();
     assert!(simd_degree <= MAX_SIMD_DEGREE);
 
@@ -603,14 +579,8 @@ pub fn bao_nary(input: &[u8], tree_degree: usize) -> Hash {
     // If simd_degree=1, the recursive call will take care of finalization.
     // Otherwise we'll do it below.
     let finalization = if simd_degree == 1 { Root } else { NotRoot };
-    let mut children_array = [0; MAX_TREE_DEGREE * MAX_SIMD_DEGREE * HASH_SIZE];
-    let mut num_children = bao_nary_recurse(
-        input,
-        finalization,
-        tree_degree,
-        simd_degree,
-        &mut children_array,
-    );
+    let mut children_array = [0; NARY * MAX_SIMD_DEGREE * HASH_SIZE];
+    let mut num_children = bao_nary_recurse(input, finalization, simd_degree, &mut children_array);
     if simd_degree == 1 {
         debug_assert_eq!(num_children, 1);
     } else {
@@ -627,7 +597,7 @@ pub fn bao_nary(input: &[u8], tree_degree: usize) -> Hash {
         }
         let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
         let children_slice = &children_array[..num_children * HASH_SIZE];
-        let out_n = bao_nary_hash_parents(children_slice, Root, tree_degree, &mut out_array);
+        let out_n = bao_nary_hash_parents(children_slice, Root, &mut out_array);
         children_array[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
         num_children = out_n;
     }
@@ -673,17 +643,6 @@ mod test {
         }
     }
 
-    #[test]
-    fn test_nary_2() {
-        for &len in CASES {
-            eprintln!("case {}", len);
-            let input = vec![0; len];
-            let expected = bao_standard(&input).to_hex();
-            let hash = bao_nary(&input, 2);
-            assert_eq!(expected, hash.to_hex());
-        }
-    }
-
     fn nary_parent_hash(children: &[Hash], finalization: Finalization) -> Hash {
         let mut state = parent_params(finalization).to_state();
         for child in children {
@@ -693,63 +652,24 @@ mod test {
     }
 
     #[test]
-    fn test_nary_4() {
-        const NARY: usize = 4;
-        let chunk = &[0; CHUNK_SIZE];
-        let chunk_hash = hash_chunk(chunk, NotRoot);
-
-        // The 4 chunk case.
-        let four_expected_root = nary_parent_hash(&[chunk_hash; 4], Root);
-        assert_eq!(four_expected_root, bao_nary(&[0; 4 * CHUNK_SIZE], NARY));
-
-        // The 5 chunk case.
-        let four_chunks_hash = nary_parent_hash(&[chunk_hash; 4], NotRoot);
-        let five_expected_root = nary_parent_hash(&[four_chunks_hash, chunk_hash], Root);
-        assert_eq!(five_expected_root, bao_nary(&[0; 5 * CHUNK_SIZE], NARY));
-
-        // The 6 chunk case.
-        let two_chunks_hash = nary_parent_hash(&[chunk_hash; 2], NotRoot);
-        let six_expected_root = nary_parent_hash(&[four_chunks_hash, two_chunks_hash], Root);
-        assert_eq!(six_expected_root, bao_nary(&[0; 6 * CHUNK_SIZE], NARY));
-
-        // The 7 chunk case.
-        let three_chunks_hash = nary_parent_hash(&[chunk_hash; 3], NotRoot);
-        let seven_expected_root = nary_parent_hash(&[four_chunks_hash, three_chunks_hash], Root);
-        assert_eq!(seven_expected_root, bao_nary(&[0; 7 * CHUNK_SIZE], NARY));
-
-        // The 8 chunk case.
-        let eight_expected_root = nary_parent_hash(&[four_chunks_hash, four_chunks_hash], Root);
-        assert_eq!(eight_expected_root, bao_nary(&[0; 8 * CHUNK_SIZE], NARY));
-
-        // The 9 chunk case.
-        let nine_expected_root =
-            nary_parent_hash(&[four_chunks_hash, four_chunks_hash, chunk_hash], Root);
-        assert_eq!(nine_expected_root, bao_nary(&[0; 9 * CHUNK_SIZE], NARY));
-
-        // The 10 chunk case.
-        let ten_expected_root =
-            nary_parent_hash(&[four_chunks_hash, four_chunks_hash, two_chunks_hash], Root);
-        assert_eq!(ten_expected_root, bao_nary(&[0; 10 * CHUNK_SIZE], NARY));
-    }
-
-    #[test]
     fn test_nary_8() {
-        const NARY: usize = 8;
+        assert_eq!(NARY, 8, "value of NARY has changed");
+
         let chunk = &[0; CHUNK_SIZE];
         let chunk_hash = hash_chunk(chunk, NotRoot);
 
         // The 8 chunk case.
         let eight_expected_root = nary_parent_hash(&[chunk_hash; 8], Root);
-        assert_eq!(eight_expected_root, bao_nary(&[0; 8 * CHUNK_SIZE], NARY));
+        assert_eq!(eight_expected_root, bao_nary(&[0; 8 * CHUNK_SIZE]));
 
         // The 9 chunk case.
         let eight_chunks_hash = nary_parent_hash(&[chunk_hash; 8], NotRoot);
         let nine_expected_root = nary_parent_hash(&[eight_chunks_hash, chunk_hash], Root);
-        assert_eq!(nine_expected_root, bao_nary(&[0; 9 * CHUNK_SIZE], NARY));
+        assert_eq!(nine_expected_root, bao_nary(&[0; 9 * CHUNK_SIZE]));
 
         // The 10 chunk case.
         let two_chunks_hash = nary_parent_hash(&[chunk_hash; 2], NotRoot);
         let ten_expected_root = nary_parent_hash(&[eight_chunks_hash, two_chunks_hash], Root);
-        assert_eq!(ten_expected_root, bao_nary(&[0; 10 * CHUNK_SIZE], NARY));
+        assert_eq!(ten_expected_root, bao_nary(&[0; 10 * CHUNK_SIZE]));
     }
 }
