@@ -102,9 +102,10 @@ impl RandomInput {
     pub fn new(len: usize) -> Self {
         let page_size: usize = page_size::get();
         let mut buf = vec![0u8; len + page_size];
-        rand::thread_rng().fill_bytes(&mut buf);
+        let mut rng = rand::thread_rng();
+        rng.fill_bytes(&mut buf);
         let mut offsets: Vec<usize> = (0..page_size).collect();
-        offsets.shuffle(&mut rand::thread_rng());
+        offsets.shuffle(&mut rng);
         Self {
             buf,
             len,
