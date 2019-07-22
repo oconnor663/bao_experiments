@@ -188,140 +188,10 @@ fn hash_parent(left: &Hash, right: &Hash, finalization: Finalization) -> Hash {
     state.finalize().into()
 }
 
-fn hash_eight_chunk_subtree(
-    chunk0: &[u8],
-    chunk1: &[u8],
-    chunk2: &[u8],
-    chunk3: &[u8],
-    chunk4: &[u8],
-    chunk5: &[u8],
-    chunk6: &[u8],
-    chunk7: &[u8],
-    finalization: Finalization,
-) -> Hash {
-    // This relies on the fact that finalize_hash does nothing for non-root nodes.
-    let params = chunk_params(NotRoot);
-    let mut jobs = [
-        HashManyJob::new(&params, chunk0),
-        HashManyJob::new(&params, chunk1),
-        HashManyJob::new(&params, chunk2),
-        HashManyJob::new(&params, chunk3),
-        HashManyJob::new(&params, chunk4),
-        HashManyJob::new(&params, chunk5),
-        HashManyJob::new(&params, chunk6),
-        HashManyJob::new(&params, chunk7),
-    ];
-    blake2s_simd::many::hash_many(jobs.iter_mut());
-
-    let double0 = hash_parent(
-        &jobs[0].to_hash().into(),
-        &jobs[1].to_hash().into(),
-        NotRoot,
-    );
-    let double1 = hash_parent(
-        &jobs[2].to_hash().into(),
-        &jobs[3].to_hash().into(),
-        NotRoot,
-    );
-    let double2 = hash_parent(
-        &jobs[4].to_hash().into(),
-        &jobs[5].to_hash().into(),
-        NotRoot,
-    );
-    let double3 = hash_parent(
-        &jobs[6].to_hash().into(),
-        &jobs[7].to_hash().into(),
-        NotRoot,
-    );
-
-    let quad0 = hash_parent(&double0, &double1, NotRoot);
-    let quad1 = hash_parent(&double2, &double3, NotRoot);
-
-    hash_parent(&quad0, &quad1, finalization)
-}
-
-// This is the current standard Bao function. Note that this repo only contains large benchmarks,
-// so there's no serial fallback here for short inputs.
-fn bao_standard_recurse(input: &[u8], finalization: Finalization) -> Hash {
-    if input.len() <= CHUNK_SIZE {
-        return hash_chunk(input, finalization);
-    }
-    // Special case: If the input is exactly 8 chunks, hashing those 8 chunks
-    // in parallel with SIMD is more efficient than going one by one.
-    if input.len() == 8 * CHUNK_SIZE {
-        return hash_eight_chunk_subtree(
-            &input[0 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[1 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[2 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[3 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[4 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[5 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[6 * CHUNK_SIZE..][..CHUNK_SIZE],
-            &input[7 * CHUNK_SIZE..][..CHUNK_SIZE],
-            finalization,
-        );
-    }
-    let (left, right) = input.split_at(left_len(input.len()));
-    let (left_hash, right_hash) = join(
-        || bao_standard_recurse(left, NotRoot),
-        || bao_standard_recurse(right, NotRoot),
-    );
-    hash_parent(&left_hash, &right_hash, finalization)
-}
-
-pub fn bao_standard(input: &[u8]) -> Hash {
-    bao_standard_recurse(input, Root)
-}
-
-fn large_left_len(content_len: usize) -> usize {
-    debug_assert!(content_len > LARGE_CHUNK_SIZE);
-    // Subtract 1 to reserve at least one byte for the right side.
-    let full_chunks = (content_len - 1) / LARGE_CHUNK_SIZE;
-    largest_power_of_two_leq(full_chunks) * LARGE_CHUNK_SIZE
-}
-
-// Modified Bao using LARGE_CHUNK_SIZE. This provides a reference point for
-// extremely low parent node overhead, though it probably wouldn't be practical
-// to use such large chunks in the standard.
-fn bao_large_chunks_recurse(input: &[u8], finalization: Finalization) -> Hash {
-    if input.len() <= LARGE_CHUNK_SIZE {
-        return hash_chunk(input, finalization);
-    }
-    // Special case: If the input is exactly 8 chunks, hashing those 8
-    // chunks in parallel with SIMD is more efficient than going one by one.
-    if input.len() == 8 * LARGE_CHUNK_SIZE {
-        return hash_eight_chunk_subtree(
-            &input[0 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[1 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[2 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[3 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[4 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[5 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[6 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            &input[7 * LARGE_CHUNK_SIZE..][..LARGE_CHUNK_SIZE],
-            finalization,
-        );
-    }
-    let (left, right) = input.split_at(large_left_len(input.len()));
-    let (left_hash, right_hash) = join(
-        || bao_large_chunks_recurse(left, NotRoot),
-        || bao_large_chunks_recurse(right, NotRoot),
-    );
-    hash_parent(&left_hash, &right_hash, finalization)
-}
-
-pub fn bao_large_chunks(input: &[u8]) -> Hash {
-    bao_large_chunks_recurse(input, Root)
-}
-
 type JobsVec<'a> = ArrayVec<[HashManyJob<'a>; MAX_SIMD_DEGREE]>;
 
 // Do one round of constructing and hashing parent hashes.
-fn bao_parallel_parents_hash_parents(
-    children: &[u8],
-    finalization: Finalization,
-    out: &mut [u8],
-) -> usize {
+fn hash_parents_simd(children: &[u8], finalization: Finalization, out: &mut [u8]) -> usize {
     debug_assert_eq!(children.len() % HASH_SIZE, 0);
     // finalization=Root means that the current set of children will form the
     // top of the tree, but we can't actually apply Root finalization until we
@@ -353,6 +223,105 @@ fn bao_parallel_parents_hash_parents(
         }
     }
     outputs
+}
+
+fn condense_parents(mut children: &mut [u8], finalization: Finalization) -> Hash {
+    debug_assert_eq!(children.len() % HASH_SIZE, 0);
+    let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE / 2];
+    loop {
+        if children.len() == HASH_SIZE {
+            return Hash {
+                bytes: *array_ref!(children, 0, HASH_SIZE),
+            };
+        }
+        let out_n = hash_parents_simd(children, finalization, &mut out_array);
+        children[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
+        children = &mut children[..out_n * HASH_SIZE];
+    }
+}
+
+// This is the current standard Bao function. Note that this repo only contains large benchmarks,
+// so there's no serial fallback here for short inputs.
+fn bao_standard_recurse(input: &[u8], finalization: Finalization, simd_degree: usize) -> Hash {
+    // The top level handles the one chunk case.
+    debug_assert!(input.len() > 0);
+
+    if input.len() <= simd_degree * CHUNK_SIZE {
+        // Because the top level handles the one chunk case, chunk hashing is
+        // never Root.
+        let chunk_params = chunk_params(NotRoot);
+        let mut jobs = JobsVec::new();
+        for chunk in input.chunks(CHUNK_SIZE) {
+            jobs.push(HashManyJob::new(&chunk_params, chunk));
+        }
+        blake2s_simd::many::hash_many(jobs.iter_mut());
+        let mut buffer = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+        for (job, dest) in jobs.iter_mut().zip(buffer.chunks_exact_mut(HASH_SIZE)) {
+            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+        }
+        return condense_parents(&mut buffer[..jobs.len() * HASH_SIZE], finalization);
+    }
+
+    let (left, right) = input.split_at(left_len(input.len()));
+    let (left_hash, right_hash) = join(
+        || bao_standard_recurse(left, NotRoot, simd_degree),
+        || bao_standard_recurse(right, NotRoot, simd_degree),
+    );
+    hash_parent(&left_hash, &right_hash, finalization)
+}
+
+pub fn bao_standard(input: &[u8]) -> Hash {
+    if input.len() <= CHUNK_SIZE {
+        return hash_chunk(input, Root);
+    }
+    let degree = blake2s_simd::many::degree();
+    bao_standard_recurse(input, Root, degree)
+}
+
+fn large_left_len(content_len: usize) -> usize {
+    debug_assert!(content_len > LARGE_CHUNK_SIZE);
+    // Subtract 1 to reserve at least one byte for the right side.
+    let full_chunks = (content_len - 1) / LARGE_CHUNK_SIZE;
+    largest_power_of_two_leq(full_chunks) * LARGE_CHUNK_SIZE
+}
+
+// Modified Bao using LARGE_CHUNK_SIZE. This provides a reference point for
+// extremely low parent node overhead, though it probably wouldn't be practical
+// to use such large chunks in the standard.
+fn bao_large_chunks_recurse(input: &[u8], finalization: Finalization, simd_degree: usize) -> Hash {
+    // The top level handles the one chunk case.
+    debug_assert!(input.len() > 0);
+
+    if input.len() <= simd_degree * LARGE_CHUNK_SIZE {
+        // Because the top level handles the one chunk case, chunk hashing is
+        // never Root.
+        let chunk_params = chunk_params(NotRoot);
+        let mut jobs = JobsVec::new();
+        for chunk in input.chunks(LARGE_CHUNK_SIZE) {
+            jobs.push(HashManyJob::new(&chunk_params, chunk));
+        }
+        blake2s_simd::many::hash_many(jobs.iter_mut());
+        let mut buffer = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+        for (job, dest) in jobs.iter_mut().zip(buffer.chunks_exact_mut(HASH_SIZE)) {
+            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+        }
+        return condense_parents(&mut buffer[..jobs.len() * HASH_SIZE], finalization);
+    }
+
+    let (left, right) = input.split_at(large_left_len(input.len()));
+    let (left_hash, right_hash) = join(
+        || bao_large_chunks_recurse(left, NotRoot, simd_degree),
+        || bao_large_chunks_recurse(right, NotRoot, simd_degree),
+    );
+    hash_parent(&left_hash, &right_hash, finalization)
+}
+
+pub fn bao_large_chunks(input: &[u8]) -> Hash {
+    if input.len() <= LARGE_CHUNK_SIZE {
+        return hash_chunk(input, Root);
+    }
+    let degree = blake2s_simd::many::degree();
+    bao_large_chunks_recurse(input, Root, degree)
 }
 
 // Another approach to standard Bao. This implementation uses SIMD even when
@@ -394,7 +363,7 @@ fn bao_parallel_parents_recurse(
     debug_assert_eq!(simd_degree, left_n, "left subtree always full");
     let num_children = left_n + right_n;
     let children_slice = &child_out_array[..num_children * HASH_SIZE];
-    bao_parallel_parents_hash_parents(children_slice, finalization, out)
+    hash_parents_simd(children_slice, finalization, out)
 }
 
 pub fn bao_parallel_parents(input: &[u8]) -> Hash {
@@ -421,7 +390,7 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
         }
         let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE / 2];
         let children_slice = &children_array[..num_children * HASH_SIZE];
-        let out_n = bao_parallel_parents_hash_parents(children_slice, Root, &mut out_array);
+        let out_n = hash_parents_simd(children_slice, Root, &mut out_array);
         children_array[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
         num_children = out_n;
     }
