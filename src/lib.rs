@@ -373,27 +373,14 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     }
     let simd_degree = blake2s_simd::many::degree();
     let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
-    let mut num_children =
-        bao_parallel_parents_recurse(input, Root, simd_degree, &mut children_array);
+    let num_children = bao_parallel_parents_recurse(input, Root, simd_degree, &mut children_array);
     if simd_degree == 1 {
         debug_assert_eq!(num_children, 1);
     } else {
         debug_assert!(num_children > 1);
     }
-    // Now we need to combine child_hashes into parent nodes until we're left
-    // with the single root hash, then return that.
-    loop {
-        if num_children == 1 {
-            return Hash {
-                bytes: *array_ref!(children_array, 0, HASH_SIZE),
-            };
-        }
-        let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE / 2];
-        let children_slice = &children_array[..num_children * HASH_SIZE];
-        let out_n = hash_parents_simd(children_slice, Root, &mut out_array);
-        children_array[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
-        num_children = out_n;
-    }
+    let children_slice = &mut children_array[..num_children * HASH_SIZE];
+    condense_parents(children_slice, Root)
 }
 
 // Do one round of constructing and hashing parent hashes. The rule for
@@ -403,7 +390,7 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
 // with simd_degree*tree_degree children, if there's enough input, but it also
 // gets reused in a loop at the root level to join everything into the root
 // hash.
-fn bao_nary_hash_parents(children: &[u8], finalization: Finalization, out: &mut [u8]) -> usize {
+fn nary_hash_parents_simd(children: &[u8], finalization: Finalization, out: &mut [u8]) -> usize {
     // finalization=Root means that the current set of children will form the
     // top of the tree, but we can't actually apply Root finalization until we
     // get to the very top node.
@@ -528,7 +515,7 @@ fn bao_nary_recurse(
     // case.
     debug_assert_eq!(left_n, children_wanted / 2, "left subtree complete");
     let children_slice = &children_array[..num_children * HASH_SIZE];
-    bao_nary_hash_parents(children_slice, finalization, out)
+    nary_hash_parents_simd(children_slice, finalization, out)
 }
 
 // Note that a real nary design would change the value of the fanout BLAKE2
@@ -567,7 +554,7 @@ pub fn bao_nary(input: &[u8]) -> Hash {
         }
         let mut out_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
         let children_slice = &children_array[..num_children * HASH_SIZE];
-        let out_n = bao_nary_hash_parents(children_slice, Root, &mut out_array);
+        let out_n = nary_hash_parents_simd(children_slice, Root, &mut out_array);
         children_array[..out_n * HASH_SIZE].copy_from_slice(&out_array[..out_n * HASH_SIZE]);
         num_children = out_n;
     }
