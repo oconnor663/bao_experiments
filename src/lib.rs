@@ -491,7 +491,7 @@ fn bao_nary_recurse(
     let out_slice_len = children_wanted / 2 * HASH_SIZE;
     debug_assert!(out_slice_len <= children_array.len() / 2);
     let (left_child_out, right_child_out) = children_array.split_at_mut(out_slice_len);
-    let (left_n, right_n) = rayon::join(
+    let (left_n, right_n) = join(
         || bao_nary_recurse(left_input, NotRoot, simd_degree, left_child_out),
         || bao_nary_recurse(right_input, NotRoot, simd_degree, right_child_out),
     );
