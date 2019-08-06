@@ -152,7 +152,7 @@ fn common_params() -> Params {
     params
         .hash_length(HASH_SIZE)
         .fanout(2)
-        .max_depth(64)
+        .max_depth(255)
         .max_leaf_length(CHUNK_SIZE as u32)
         .node_offset(0)
         .inner_hash_length(HASH_SIZE);
@@ -567,22 +567,22 @@ mod test {
     #[test]
     fn test_standard() {
         let input = b"";
-        let expected = "99fa3a0ee4b435ff17157e205f091cac3938e82335e9684446e513ea1c3b698a";
+        let expected = "4d3b32e1f160c90fabf275f9a2882a43b595aa895dfdc6b20fca1f5b51a295b4";
         let hash = bao_standard(input);
         assert_eq!(expected, &*hash.to_hex());
 
         let input = vec![0; CHUNK_SIZE];
-        let expected = "930f49df68777515ba0891aa7ece3918070517c1ae65ad8b39ec7108d96ebce6";
+        let expected = "f3843cc6f46eb6e05d22beca6190c935e34ed8113a14b7558caa20d828dad209";
         let hash = bao_standard(&input);
         assert_eq!(expected, &*hash.to_hex());
 
         let input = vec![0; CHUNK_SIZE + 1];
-        let expected = "d414be8f1ac545c71fcbe46a28fe5924f00111d0cca8828a4dfa94e3b72ffb1a";
+        let expected = "0d59eb59888321fa4c3ff3313e0ee3454e32937bb42a89a5aec3721fdaa9f3c7";
         let hash = bao_standard(&input);
         assert_eq!(expected, &*hash.to_hex());
 
         let input = vec![0; 1_000_000];
-        let expected = "c298c4fb54c75e48ea92a210aa071888a6ada44968d116064269204f3e96bfb9";
+        let expected = "46eca6679449475ce5b4ed75b2d290e94ebbfdb0a1137986d609bc03a7de4ced";
         let hash = bao_standard(&input);
         assert_eq!(expected, &*hash.to_hex());
     }
