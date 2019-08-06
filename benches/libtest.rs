@@ -61,6 +61,21 @@ fn bench_bao_parallel_parents(b: &mut Bencher) {
 }
 
 #[bench]
+fn bench_bao_evil_random(b: &mut Bencher) {
+    b.bytes = BENCH_LENGTH as u64;
+    let mut input = RandomInput::new(BENCH_LENGTH);
+    b.iter(|| bao_evil(input.get()));
+}
+
+#[bench]
+fn bench_bao_evil_zeros(b: &mut Bencher) {
+    b.bytes = BENCH_LENGTH as u64;
+    let input = vec![0; BENCH_LENGTH];
+    let input = test::black_box(input).clone();
+    b.iter(|| bao_evil(&input));
+}
+
+#[bench]
 fn bench_bao_large_chunks(b: &mut Bencher) {
     b.bytes = BENCH_LENGTH as u64;
     let mut input = RandomInput::new(BENCH_LENGTH);

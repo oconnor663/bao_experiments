@@ -345,6 +345,96 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     condense_parents(children_slice, Root)
 }
 
+enum EvilTrick<'a> {
+    RealJob(HashManyJob<'a>),
+    AllZeros,
+}
+
+// A copy of bao_parallel_parents, but measuring the performance impact of an
+// evil terrible optimization that no one should ever do.
+fn bao_evil_recurse(
+    input: &[u8],
+    finalization: Finalization,
+    simd_degree: usize,
+    out: &mut [u8],
+) -> usize {
+    // The top level handles the one chunk case.
+    debug_assert!(input.len() > 0);
+
+    if input.len() <= simd_degree * CHUNK_SIZE {
+        // Because the top level handles the one chunk case, chunk hashing is
+        // never Root.
+        let chunk_params = chunk_params(NotRoot);
+        let mut jobs = ArrayVec::<[EvilTrick; MAX_SIMD_DEGREE]>::new();
+        for chunk in input.chunks(CHUNK_SIZE) {
+            // EVIL! Never ever even think about doing this in non-experimental
+            // code. We're inspecting whether the chunk is all-zero, and if so
+            // using a hardcoded hash. This destroys the contant time
+            // guarantees that a cryptographic hash is supposed to provide. The
+            // goal of this experiment is to see what the performance numbers
+            // look like, to try to get a sense of whether anyone will actually
+            // be tempted to do this in the real world.
+            if chunk == &[0; CHUNK_SIZE][..] {
+                jobs.push(EvilTrick::AllZeros);
+            } else {
+                jobs.push(EvilTrick::RealJob(HashManyJob::new(&chunk_params, chunk)));
+            }
+        }
+        blake2s_simd::many::hash_many(jobs.iter_mut().filter_map(|trick| match trick {
+            EvilTrick::RealJob(job) => Some(job),
+            EvilTrick::AllZeros => None,
+        }));
+        for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
+            match job {
+                EvilTrick::RealJob(job) => {
+                    *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+                }
+                EvilTrick::AllZeros => {
+                    const ZERO_HASH: [u8; HASH_SIZE] = [
+                        0x1f, 0x88, 0x9c, 0xb4, 0x5b, 0x19, 0x01, 0xce, 0x01, 0xbb, 0xa3, 0x55,
+                        0x37, 0xed, 0xe4, 0x36, 0xe5, 0xb8, 0x4e, 0x00, 0x32, 0x7e, 0xce, 0xd6,
+                        0x03, 0xa4, 0x6a, 0x9b, 0x2b, 0x02, 0x95, 0x06,
+                    ];
+                    debug_assert_eq!(&ZERO_HASH, chunk_params.hash(&[0; CHUNK_SIZE]).as_array());
+                    *array_mut_ref!(dest, 0, HASH_SIZE) = ZERO_HASH;
+                }
+            }
+        }
+        return jobs.len();
+    }
+
+    let (left_input, right_input) = input.split_at(left_len(input.len()));
+    let mut child_out_array = [0; 2 * MAX_SIMD_DEGREE * HASH_SIZE];
+    let (left_out, right_out) = child_out_array.split_at_mut(simd_degree * HASH_SIZE);
+    let (left_n, right_n) = join(
+        || bao_evil_recurse(left_input, NotRoot, simd_degree, left_out),
+        || bao_evil_recurse(right_input, NotRoot, simd_degree, right_out),
+    );
+    // This asserts that the left_out slice was filled, which means all the
+    // child hashes are laid out contiguously.
+    debug_assert_eq!(simd_degree, left_n, "left subtree always full");
+    let num_children = left_n + right_n;
+    let children_slice = &child_out_array[..num_children * HASH_SIZE];
+    hash_parents_simd(children_slice, finalization, out)
+}
+
+pub fn bao_evil(input: &[u8]) -> Hash {
+    // Handle the single chunk case explicitly.
+    if input.len() <= CHUNK_SIZE {
+        return hash_chunk(input, Root);
+    }
+    let simd_degree = blake2s_simd::many::degree();
+    let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
+    let num_children = bao_evil_recurse(input, Root, simd_degree, &mut children_array);
+    if simd_degree == 1 {
+        debug_assert_eq!(num_children, 1);
+    } else {
+        debug_assert!(num_children > 1);
+    }
+    let children_slice = &mut children_array[..num_children * HASH_SIZE];
+    condense_parents(children_slice, Root)
+}
+
 // Do one round of constructing and hashing parent hashes. The rule for
 // leftover children is that if there's exactly one leftover child, it gets
 // raised to the level above, but any larger number of leftover children get
@@ -558,6 +648,25 @@ mod test {
             let input = vec![0; len];
             let expected = bao_standard(&input).to_hex();
             let hash = bao_parallel_parents(&input);
+            assert_eq!(expected, hash.to_hex());
+        }
+    }
+
+    #[test]
+    fn test_evil() {
+        for &len in CASES {
+            eprintln!("case {}", len);
+
+            // Test all zeros.
+            let input = vec![0; len];
+            let expected = bao_standard(&input).to_hex();
+            let hash = bao_evil(&input);
+            assert_eq!(expected, hash.to_hex());
+
+            // Test all ones.
+            let input = vec![1; len];
+            let expected = bao_standard(&input).to_hex();
+            let hash = bao_evil(&input);
             assert_eq!(expected, hash.to_hex());
         }
     }
