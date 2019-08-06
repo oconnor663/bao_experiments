@@ -4,8 +4,6 @@ use blake2s_simd::{
     many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE},
     Params,
 };
-use rand::seq::SliceRandom;
-use rand::RngCore;
 use std::fmt;
 
 #[cfg(not(feature = "single"))]
@@ -85,42 +83,6 @@ impl From<blake2s_simd::Hash> for Hash {
         Hash {
             bytes: *array_ref!(hash.as_bytes(), 0, HASH_SIZE),
         }
-    }
-}
-
-// This struct randomizes two things:
-// 1. The actual bytes of input.
-// 2. The page offset the input starts at.
-pub struct RandomInput {
-    buf: Vec<u8>,
-    len: usize,
-    offsets: Vec<usize>,
-    offset_index: usize,
-}
-
-impl RandomInput {
-    pub fn new(len: usize) -> Self {
-        let page_size: usize = page_size::get();
-        let mut buf = vec![0u8; len + page_size];
-        let mut rng = rand::thread_rng();
-        rng.fill_bytes(&mut buf);
-        let mut offsets: Vec<usize> = (0..page_size).collect();
-        offsets.shuffle(&mut rng);
-        Self {
-            buf,
-            len,
-            offsets,
-            offset_index: 0,
-        }
-    }
-
-    pub fn get(&mut self) -> &[u8] {
-        let offset = self.offsets[self.offset_index];
-        self.offset_index += 1;
-        if self.offset_index >= self.offsets.len() {
-            self.offset_index = 0;
-        }
-        &self.buf[offset..][..self.len]
     }
 }
 

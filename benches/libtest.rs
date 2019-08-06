@@ -5,8 +5,46 @@ extern crate rand;
 extern crate test;
 
 use bao_experiments::*;
+use rand::seq::SliceRandom;
+use rand::RngCore;
 use std::mem;
 use test::Bencher;
+
+// This struct randomizes two things:
+// 1. The actual bytes of input.
+// 2. The page offset the input starts at.
+pub struct RandomInput {
+    buf: Vec<u8>,
+    len: usize,
+    offsets: Vec<usize>,
+    offset_index: usize,
+}
+
+impl RandomInput {
+    pub fn new(len: usize) -> Self {
+        let page_size: usize = page_size::get();
+        let mut buf = vec![0u8; len + page_size];
+        let mut rng = rand::thread_rng();
+        rng.fill_bytes(&mut buf);
+        let mut offsets: Vec<usize> = (0..page_size).collect();
+        offsets.shuffle(&mut rng);
+        Self {
+            buf,
+            len,
+            offsets,
+            offset_index: 0,
+        }
+    }
+
+    pub fn get(&mut self) -> &[u8] {
+        let offset = self.offsets[self.offset_index];
+        self.offset_index += 1;
+        if self.offset_index >= self.offsets.len() {
+            self.offset_index = 0;
+        }
+        &self.buf[offset..][..self.len]
+    }
+}
 
 #[bench]
 fn bench_bao_standard(b: &mut Bencher) {
