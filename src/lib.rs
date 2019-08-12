@@ -590,9 +590,7 @@ pub fn bao_nary(input: &[u8]) -> Hash {
     let finalization = if simd_degree == 1 { Root } else { NotRoot };
     let mut children_array = [0; NARY * MAX_SIMD_DEGREE * HASH_SIZE];
     let mut num_children = bao_nary_recurse(input, finalization, simd_degree, &mut children_array);
-    if simd_degree == 1 {
-        debug_assert_eq!(num_children, 1);
-    } else {
+    if simd_degree > 1 {
         debug_assert!(num_children > 1);
     }
 
