@@ -438,10 +438,11 @@ pub fn bao_evil(input: &[u8]) -> Hash {
 // Do one round of constructing and hashing parent hashes. The rule for
 // leftover children is that if there's exactly one leftover child, it gets
 // raised to the level above, but any larger number of leftover children get
-// combined into a partial parent node. Most of the time this will be called
-// with simd_degree*tree_degree children, if there's enough input, but it also
-// gets reused in a loop at the root level to join everything into the root
-// hash.
+// combined into a partial parent node. This maintains the invariant that only
+// subtrees along the right edge of the tree may be incomplete. Most of the
+// time this will be called with simd_degree*tree_degree children, if there's
+// enough input, but it also gets reused in a loop at the root level to join
+// everything into the root hash.
 fn nary_hash_parents_simd(children: &[u8], finalization: Finalization, out: &mut [u8]) -> usize {
     // finalization=Root means that the current set of children will form the
     // top of the tree, but we can't actually apply Root finalization until we
@@ -551,6 +552,10 @@ fn bao_nary_recurse(
 
     // As described above, if we got half or less of what we wanted, just give
     // everything to the caller.
+    //
+    // BUG HERE: This is incorrect for 10 chunks when SIMD degree equals 1. The
+    // right 2 chunks should be merged at some point before the root. I'm not
+    // sure what the right logic is here.
     if num_children <= children_wanted / 2 {
         let (left_parent_out, right_parent_out) = out.split_at_mut(left_n * HASH_SIZE);
         left_parent_out.copy_from_slice(&left_child_out[..left_n * HASH_SIZE]);
@@ -573,11 +578,7 @@ fn bao_nary_recurse(
 // Note that a real nary design would change the value of the fanout BLAKE2
 // parameter. But because this is just a performance experiment, we don't
 // bother.
-pub fn bao_nary(input: &[u8]) -> Hash {
-    // Assert the invariants here at the top. Hopefully this helps the
-    // optimizer elide some bounds checks in the recursive calls, but I haven't
-    // verified this.
-    let simd_degree = blake2s_simd::many::degree();
+pub fn bao_nary(input: &[u8], simd_degree: usize) -> Hash {
     assert!(simd_degree <= MAX_SIMD_DEGREE);
 
     // Handle the single chunk case explicitly.
@@ -678,24 +679,66 @@ mod test {
     }
 
     #[test]
-    fn test_nary_8() {
+    fn test_nary_8_detect() {
         assert_eq!(NARY, 8, "value of NARY has changed");
+        let simd_degree = blake2s_simd::many::degree();
 
         let chunk = &[0; CHUNK_SIZE];
         let chunk_hash = hash_chunk(chunk, NotRoot);
 
         // The 8 chunk case.
         let eight_expected_root = nary_parent_hash(&[chunk_hash; 8], Root);
-        assert_eq!(eight_expected_root, bao_nary(&[0; 8 * CHUNK_SIZE]));
+        assert_eq!(
+            eight_expected_root,
+            bao_nary(&[0; 8 * CHUNK_SIZE], simd_degree)
+        );
 
         // The 9 chunk case.
         let eight_chunks_hash = nary_parent_hash(&[chunk_hash; 8], NotRoot);
         let nine_expected_root = nary_parent_hash(&[eight_chunks_hash, chunk_hash], Root);
-        assert_eq!(nine_expected_root, bao_nary(&[0; 9 * CHUNK_SIZE]));
+        assert_eq!(
+            nine_expected_root,
+            bao_nary(&[0; 9 * CHUNK_SIZE], simd_degree)
+        );
 
         // The 10 chunk case.
         let two_chunks_hash = nary_parent_hash(&[chunk_hash; 2], NotRoot);
         let ten_expected_root = nary_parent_hash(&[eight_chunks_hash, two_chunks_hash], Root);
-        assert_eq!(ten_expected_root, bao_nary(&[0; 10 * CHUNK_SIZE]));
+        assert_eq!(
+            ten_expected_root,
+            bao_nary(&[0; 10 * CHUNK_SIZE], simd_degree)
+        );
+    }
+
+    #[test]
+    fn test_nary_8_simd_degree_1() {
+        assert_eq!(NARY, 8, "value of NARY has changed");
+        let simd_degree = 1;
+
+        let chunk = &[0; CHUNK_SIZE];
+        let chunk_hash = hash_chunk(chunk, NotRoot);
+
+        // The 8 chunk case.
+        let eight_expected_root = nary_parent_hash(&[chunk_hash; 8], Root);
+        assert_eq!(
+            eight_expected_root,
+            bao_nary(&[0; 8 * CHUNK_SIZE], simd_degree)
+        );
+
+        // The 9 chunk case.
+        let eight_chunks_hash = nary_parent_hash(&[chunk_hash; 8], NotRoot);
+        let nine_expected_root = nary_parent_hash(&[eight_chunks_hash, chunk_hash], Root);
+        assert_eq!(
+            nine_expected_root,
+            bao_nary(&[0; 9 * CHUNK_SIZE], simd_degree)
+        );
+
+        // The 10 chunk case.
+        let two_chunks_hash = nary_parent_hash(&[chunk_hash; 2], NotRoot);
+        let ten_expected_root = nary_parent_hash(&[eight_chunks_hash, two_chunks_hash], Root);
+        assert_eq!(
+            ten_expected_root,
+            bao_nary(&[0; 10 * CHUNK_SIZE], simd_degree)
+        );
     }
 }
