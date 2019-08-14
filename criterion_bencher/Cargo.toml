@@ -1,0 +1,18 @@
+[package]
+name = "criterion_bencher"
+version = "0.1.0"
+authors = ["Jack O'Connor <oconnor663@gmail.com>"]
+edition = "2018"
+
+[[bench]]
+name = "bench"
+harness = false
+
+[dependencies]
+criterion = "0.2.11"
+blake2s_simd = "0.5.6"
+page_size = "0.4.1"
+rand = "0.7.0"
+bao = "0.7.0"
+openssl = "0.10.24"
+blake2b_simd = "0.5.6"
