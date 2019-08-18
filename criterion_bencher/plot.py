@@ -38,7 +38,11 @@ SIZES = [
 
 def main():
     target = Path(sys.argv[1])
-    title = target.with_suffix(".title").open().read().strip()
+    try:
+        title = target.with_name(target.name + ".title").open().read().strip()
+    except FileNotFoundError as e:
+        print(e)
+        title = ""
     columns = ["function", "size", "throughput"]
     data = []
     for hash_name, hash_name_pretty in HASH_NAMES:
