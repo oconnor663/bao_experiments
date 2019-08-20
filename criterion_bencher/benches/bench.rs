@@ -39,7 +39,7 @@ fn benchmarks(c: &mut Criterion) {
         })
         .with_function("bao", |b, param| {
             let mut input = RandomInput::new(*param);
-            b.iter(|| bao::hash::hash(input.get()));
+            b.iter(|| bao::hash(input.get()));
         })
         .with_function("sha256", |b, param| {
             let mut input = RandomInput::new(*param);
