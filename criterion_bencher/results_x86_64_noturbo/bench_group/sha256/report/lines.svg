@@ -197,7 +197,7 @@
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<path stroke='rgb(178,  34,  34)'  d='M1171.3,63.1 L1213.5,63.1 M55.4,662.3 L55.5,662.2 L55.8,662.1 L56.2,661.8 L57.2,661.3 L59.0,660.4
-		L62.7,658.4 L70.2,654.4 L85.1,646.4 L114.9,630.4 L174.5,598.5 L293.7,535.2 L532.0,408.1 L1008.7,154.1
+		L62.7,658.4 L70.2,654.4 L85.1,646.4 L114.9,630.6 L174.5,598.9 L293.7,535.3 L532.0,407.7 L1008.7,154.1
 		 '/></g>
 	</g>
 	<g id="gnuplot_plot_2" ><title>gnuplot_plot_2</title>
@@ -214,10 +214,10 @@
 	<use xlink:href='#gpPt6' transform='translate(62.7,658.4) scale(3.38)' color='rgb(178,  34,  34)'/>
 	<use xlink:href='#gpPt6' transform='translate(70.2,654.4) scale(3.38)' color='rgb(178,  34,  34)'/>
 	<use xlink:href='#gpPt6' transform='translate(85.1,646.4) scale(3.38)' color='rgb(178,  34,  34)'/>
-	<use xlink:href='#gpPt6' transform='translate(114.9,630.4) scale(3.38)' color='rgb(178,  34,  34)'/>
-	<use xlink:href='#gpPt6' transform='translate(174.5,598.5) scale(3.38)' color='rgb(178,  34,  34)'/>
-	<use xlink:href='#gpPt6' transform='translate(293.7,535.2) scale(3.38)' color='rgb(178,  34,  34)'/>
-	<use xlink:href='#gpPt6' transform='translate(532.0,408.1) scale(3.38)' color='rgb(178,  34,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(114.9,630.6) scale(3.38)' color='rgb(178,  34,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(174.5,598.9) scale(3.38)' color='rgb(178,  34,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(293.7,535.3) scale(3.38)' color='rgb(178,  34,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(532.0,407.7) scale(3.38)' color='rgb(178,  34,  34)'/>
 	<use xlink:href='#gpPt6' transform='translate(1008.7,154.1) scale(3.38)' color='rgb(178,  34,  34)'/>
 </g>
 	</g>
