@@ -24,7 +24,7 @@ const LARGE_CHUNK_SIZE: usize = 65536;
 pub const BENCH_LENGTH: usize = 1 << 24; // about 17 MB
 
 // In my testing, 8 seems to be the best for throughput.
-const NARY: usize = 8;
+const NARY: usize = 4;
 
 #[derive(Clone, Copy)]
 pub struct Hash {
