@@ -150,7 +150,7 @@ fn bench_load_8_blake2s_blocks_gather(b: &mut Bencher) {
     let block5 = avx2_blake2s_load::random_block();
     let block6 = avx2_blake2s_load::random_block();
     let block7 = avx2_blake2s_load::random_block();
-    let mut out = unsafe { mem::uninitialized() };
+    let mut out = unsafe { mem::zeroed() };
     b.iter(|| unsafe {
         avx2_blake2s_load::load_msg_vecs_gather(
             &block0, &block1, &block2, &block3, &block4, &block5, &block6, &block7, &mut out,
