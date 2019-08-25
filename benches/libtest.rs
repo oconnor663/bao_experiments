@@ -86,7 +86,7 @@ fn bench_bao_large_chunks(b: &mut Bencher) {
 fn bench_bao_nary(b: &mut Bencher) {
     b.bytes = BENCH_LENGTH as u64;
     let mut input = RandomInput::new(BENCH_LENGTH);
-    let simd_degree = blake2s_simd::many::degree();
+    let simd_degree = blake2b_simd::many::degree();
     b.iter(|| bao_nary(input.get(), simd_degree));
 }
 

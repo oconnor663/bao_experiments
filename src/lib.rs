@@ -1,6 +1,6 @@
 use arrayref::{array_mut_ref, array_ref};
 use arrayvec::{ArrayString, ArrayVec};
-use blake2s_simd::{
+use blake2b_simd::{
     many::{HashManyJob, MAX_DEGREE as MAX_SIMD_DEGREE},
     Params,
 };
@@ -78,8 +78,8 @@ impl fmt::Debug for Hash {
     }
 }
 
-impl From<blake2s_simd::Hash> for Hash {
-    fn from(hash: blake2s_simd::Hash) -> Hash {
+impl From<blake2b_simd::Hash> for Hash {
+    fn from(hash: blake2b_simd::Hash) -> Hash {
         Hash {
             bytes: *array_ref!(hash.as_bytes(), 0, HASH_SIZE),
         }
@@ -169,11 +169,11 @@ fn hash_parents_simd(children: &[u8], finalization: Finalization, out: &mut [u8]
     for pair in &mut pairs {
         jobs.push(HashManyJob::new(&params, pair))
     }
-    blake2s_simd::many::hash_many(&mut jobs);
+    blake2b_simd::many::hash_many(&mut jobs);
     let mut out_hashes = out.chunks_exact_mut(HASH_SIZE);
     let mut outputs = 0;
     for (job, out_hash) in jobs.iter().zip(&mut out_hashes) {
-        *array_mut_ref!(out_hash, 0, HASH_SIZE) = *job.to_hash().as_array();
+        out_hash[..HASH_SIZE].copy_from_slice(job.to_hash().as_bytes());
         outputs += 1;
     }
     // The leftover child case.
@@ -216,10 +216,10 @@ fn bao_standard_recurse(input: &[u8], finalization: Finalization, simd_degree: u
         for chunk in input.chunks(CHUNK_SIZE) {
             jobs.push(HashManyJob::new(&chunk_params, chunk));
         }
-        blake2s_simd::many::hash_many(jobs.iter_mut());
+        blake2b_simd::many::hash_many(jobs.iter_mut());
         let mut buffer = [0; MAX_SIMD_DEGREE * HASH_SIZE];
         for (job, dest) in jobs.iter_mut().zip(buffer.chunks_exact_mut(HASH_SIZE)) {
-            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+            dest[..HASH_SIZE].copy_from_slice(job.to_hash().as_bytes());
         }
         return condense_parents(&mut buffer[..jobs.len() * HASH_SIZE], finalization);
     }
@@ -236,7 +236,7 @@ pub fn bao_standard(input: &[u8]) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk(input, Root);
     }
-    let degree = blake2s_simd::many::degree();
+    let degree = blake2b_simd::many::degree();
     bao_standard_recurse(input, Root, degree)
 }
 
@@ -262,10 +262,10 @@ fn bao_large_chunks_recurse(input: &[u8], finalization: Finalization, simd_degre
         for chunk in input.chunks(LARGE_CHUNK_SIZE) {
             jobs.push(HashManyJob::new(&chunk_params, chunk));
         }
-        blake2s_simd::many::hash_many(jobs.iter_mut());
+        blake2b_simd::many::hash_many(jobs.iter_mut());
         let mut buffer = [0; MAX_SIMD_DEGREE * HASH_SIZE];
         for (job, dest) in jobs.iter_mut().zip(buffer.chunks_exact_mut(HASH_SIZE)) {
-            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+            dest[..HASH_SIZE].copy_from_slice(job.to_hash().as_bytes());
         }
         return condense_parents(&mut buffer[..jobs.len() * HASH_SIZE], finalization);
     }
@@ -282,7 +282,7 @@ pub fn bao_large_chunks(input: &[u8]) -> Hash {
     if input.len() <= LARGE_CHUNK_SIZE {
         return hash_chunk(input, Root);
     }
-    let degree = blake2s_simd::many::degree();
+    let degree = blake2b_simd::many::degree();
     bao_large_chunks_recurse(input, Root, degree)
 }
 
@@ -306,9 +306,9 @@ fn bao_parallel_parents_recurse(
         for chunk in input.chunks(CHUNK_SIZE) {
             jobs.push(HashManyJob::new(&chunk_params, chunk));
         }
-        blake2s_simd::many::hash_many(jobs.iter_mut());
+        blake2b_simd::many::hash_many(jobs.iter_mut());
         for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
-            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+            dest[..HASH_SIZE].copy_from_slice(job.to_hash().as_bytes());
         }
         return jobs.len();
     }
@@ -333,7 +333,7 @@ pub fn bao_parallel_parents(input: &[u8]) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk(input, Root);
     }
-    let simd_degree = blake2s_simd::many::degree();
+    let simd_degree = blake2b_simd::many::degree();
     let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
     let num_children = bao_parallel_parents_recurse(input, Root, simd_degree, &mut children_array);
     if simd_degree == 1 {
@@ -380,14 +380,14 @@ fn bao_evil_recurse(
                 jobs.push(EvilTrick::RealJob(HashManyJob::new(&chunk_params, chunk)));
             }
         }
-        blake2s_simd::many::hash_many(jobs.iter_mut().filter_map(|trick| match trick {
+        blake2b_simd::many::hash_many(jobs.iter_mut().filter_map(|trick| match trick {
             EvilTrick::RealJob(job) => Some(job),
             EvilTrick::AllZeros => None,
         }));
         for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
             match job {
                 EvilTrick::RealJob(job) => {
-                    *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+                    dest[..HASH_SIZE].copy_from_slice(job.to_hash().as_bytes());
                 }
                 EvilTrick::AllZeros => {
                     const ZERO_HASH: [u8; HASH_SIZE] = [
@@ -395,7 +395,10 @@ fn bao_evil_recurse(
                         0x37, 0xed, 0xe4, 0x36, 0xe5, 0xb8, 0x4e, 0x00, 0x32, 0x7e, 0xce, 0xd6,
                         0x03, 0xa4, 0x6a, 0x9b, 0x2b, 0x02, 0x95, 0x06,
                     ];
-                    debug_assert_eq!(&ZERO_HASH, chunk_params.hash(&[0; CHUNK_SIZE]).as_array());
+                    debug_assert_eq!(
+                        &ZERO_HASH[..],
+                        chunk_params.hash(&[0; CHUNK_SIZE]).as_bytes()
+                    );
                     *array_mut_ref!(dest, 0, HASH_SIZE) = ZERO_HASH;
                 }
             }
@@ -423,7 +426,7 @@ pub fn bao_evil(input: &[u8]) -> Hash {
     if input.len() <= CHUNK_SIZE {
         return hash_chunk(input, Root);
     }
-    let simd_degree = blake2s_simd::many::degree();
+    let simd_degree = blake2b_simd::many::degree();
     let mut children_array = [0; MAX_SIMD_DEGREE * HASH_SIZE];
     let num_children = bao_evil_recurse(input, Root, simd_degree, &mut children_array);
     if simd_degree == 1 {
@@ -466,10 +469,10 @@ fn nary_hash_parents_simd(children: &[u8], finalization: Finalization, out: &mut
         }
         groups += 1;
     }
-    blake2s_simd::many::hash_many(&mut jobs);
+    blake2b_simd::many::hash_many(&mut jobs);
     let mut out_hashes = out.chunks_exact_mut(HASH_SIZE);
     for (job, out_hash) in jobs.iter().zip(&mut out_hashes) {
-        *array_mut_ref!(out_hash, 0, HASH_SIZE) = *job.to_hash().as_array();
+        out_hash[..HASH_SIZE].copy_from_slice(job.to_hash().as_bytes());
     }
     // The single leftover child case again.
     if let (Some(child), Some(out_hash)) = (leftover_child, out_hashes.next()) {
@@ -499,9 +502,9 @@ fn bao_nary_recurse(
         for chunk in input.chunks(CHUNK_SIZE) {
             jobs.push(HashManyJob::new(&chunk_params, chunk));
         }
-        blake2s_simd::many::hash_many(jobs.iter_mut());
+        blake2b_simd::many::hash_many(jobs.iter_mut());
         for (job, dest) in jobs.iter_mut().zip(out.chunks_exact_mut(HASH_SIZE)) {
-            *array_mut_ref!(dest, 0, HASH_SIZE) = *job.to_hash().as_array();
+            dest[..HASH_SIZE].copy_from_slice(job.to_hash().as_bytes());
         }
         return jobs.len();
     }
@@ -681,7 +684,7 @@ mod test {
     #[test]
     fn test_nary_8_detect() {
         assert_eq!(NARY, 8, "value of NARY has changed");
-        let simd_degree = blake2s_simd::many::degree();
+        let simd_degree = blake2b_simd::many::degree();
 
         let chunk = &[0; CHUNK_SIZE];
         let chunk_hash = hash_chunk(chunk, NotRoot);
